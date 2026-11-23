@@ -18,6 +18,9 @@
   var SUBMIT_TO = '근로복지공단';
   var FORM7_ETC_DETAIL = '일용근로소득 지급명세서 상세내역, 2006~현재, 1매';
 
+  var APP_V = (document.querySelector('meta[name="app-version"]') || {}).content || '';
+  var withV = function(u){ return APP_V ? u + '?v=' + APP_V : u; };
+
   function GenerationError(msg){ var e = new Error(msg); e.name = 'GenerationError'; return e; }
 
   // ===== 자료 불러오기 =====
@@ -34,16 +37,16 @@
   async function loadAssets(base){
     if (assets) return assets;
     base = base || 'assets/';
-    var specs = await (await fetch(base + 'forms/specs.json', { cache: 'no-cache' })).json();
+    var specs = await (await fetch(withV(base + 'forms/specs.json'), { cache: 'no-cache' })).json();
     var keys = Object.keys(specs.forms);
-    var files = await Promise.all(keys.map(function(k){ return fetchBytes(base + 'forms/' + specs.forms[k].file); }));
+    var files = await Promise.all(keys.map(function(k){ return fetchBytes(withV(base + 'forms/' + specs.forms[k].file)); }));
     var templates = {};
     for (var i = 0; i < keys.length; i++){
       if (await sha256Hex(files[i]) !== specs.forms[keys[i]].sha256)
         throw GenerationError(specs.forms[keys[i]].num + '번 서식 파일이 검증된 상태와 달라요. 관리자에게 문의해 주세요.');
       templates[keys[i]] = files[i];
     }
-    var font = await fetchBytes(base + 'NotoSansKR-Regular.ttf');
+    var font = await fetchBytes(withV(base + 'NotoSansKR-Regular.ttf'));
     assets = { specs: specs, templates: templates, font: font, measure: fontkit.create(font) };
     return assets;
   }
