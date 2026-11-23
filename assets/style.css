@@ -134,3 +134,59 @@ td .acts{display:flex;gap:6px}
 @media (max-width:640px){.topbar{position:static}.who .nm-full{display:none}.tab{padding:12px 8px 10px}}
 @media (max-width:480px){.row{flex-direction:column;gap:0}.layout .sheet{padding:24px 18px 20px}.stamp{display:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ===== 4대보험 청구: 1페이지 ===== */
+.page-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.page-head h1{font-size:22px;margin:0}
+.page-head .step{font-size:13px;font-weight:500;color:var(--muted);margin-left:8px}
+.head-actions{display:flex;gap:8px}
+.issue{max-width:980px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px 22px;margin-bottom:14px}
+.card h2{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.badge{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:4px;background:var(--accent);color:var(--accent-text);font-size:12px}
+.person-grid{display:grid;gap:18px;align-items:start}
+@media (min-width:760px){.person-grid{grid-template-columns:minmax(0,1fr) 230px}}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:2px 18px}
+.grid .wide{grid-column:1/-1}
+.field em{color:var(--stamp);font-style:normal}
+.dropzone{border:1.5px dashed var(--line);border-radius:6px;padding:16px;text-align:center;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:6px;align-items:center;cursor:pointer;min-height:170px;justify-content:center}
+.dropzone strong{color:var(--ink);font-size:14px}
+.dropzone.drag{border-color:var(--focus);background:var(--ok-bg)}
+.dropzone.has-image{border-style:solid;cursor:default}
+.dropzone:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.dz-thumb{max-width:100%;max-height:130px;border:1px solid var(--line);border-radius:4px;background:#fff}
+.dz-actions{display:flex;gap:6px}
+.dz-status{margin:0;font-size:12px;min-height:1em}
+.dz-status.bad{color:var(--stamp)}
+.muted{color:var(--muted)}
+.actions{margin-top:6px}
+.wide-btn{max-width:360px}
+
+/* ===== 4대보험 청구: 2페이지 ===== */
+.expire{margin:-6px 0 12px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.agency-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:12px 0}
+.agency-tabs button,.view-switch button{font-size:14px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:6px;padding:8px 16px;cursor:pointer}
+.agency-tabs button[aria-pressed="true"],.view-switch button[aria-pressed="true"]{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:700}
+.case-grid{display:grid;gap:16px;align-items:start}
+@media (min-width:960px){.case-grid{grid-template-columns:320px minmax(0,1fr)}.case-side{position:sticky;top:76px}}
+.case-side h3{font-size:13px;color:var(--muted);font-weight:500;margin:16px 0 6px}
+.case-side h3:first-of-type{margin-top:0}
+.submit-to{margin:0 0 14px;padding:10px 12px;background:var(--ok-bg);border-radius:6px;font-size:14px}
+.doc-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.doc-list li{border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:13px;display:flex;flex-direction:column}
+.doc-list li span{color:var(--muted);font-size:12px}
+.doc-list li.miss{border-color:var(--stamp)}.doc-list li.miss span{color:var(--stamp)}
+.dl-buttons{display:grid;gap:8px;margin-top:18px}
+.dl-buttons .btn{width:100%}
+.btn.sm[disabled]{opacity:.45;cursor:not-allowed}
+.ghost-btn{background:transparent;color:var(--muted);border:1px dashed var(--line)}
+.miss-note{margin:-4px 0 4px;font-size:12px;color:var(--stamp)}
+.view-switch{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;font-size:13px;color:var(--muted)}
+.view-switch:empty{display:none}
+.view-switch button{font-size:13px;padding:5px 12px}
+.preview-pages{display:grid;gap:18px;justify-items:center}
+.preview-pages figure{margin:0;max-width:100%}
+.preview-pages canvas{display:block;max-width:100%;height:auto;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.preview-pages figcaption{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
+.setpw h3{font-size:14px;margin:16px 0 0}
+#setPwBox{margin-top:10px;padding:12px 14px;border:1px solid var(--focus);border-radius:6px;background:var(--ok-bg)}

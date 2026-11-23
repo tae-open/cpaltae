@@ -21,7 +21,7 @@
   }
 
   TAEUI.onAuthLost = function(text){
-    me = null; show('viewLogin'); msg('loginMsg', text || '다시 로그인해 주세요.');
+    me = null; if (TAEUI.clearIssue) TAEUI.clearIssue(); show('viewLogin'); msg('loginMsg', text || '다시 로그인해 주세요.');
   };
 
   // ===== 로그인 =====
@@ -44,6 +44,7 @@
     if (user.mustChange) { openPw(true); return; }
     $('whoName').textContent = user.name;
     $('whoRole').textContent = user.role;
+    $('chgPw').hidden = user.role !== '관리자';   // 직원(공용) 계정은 관리자만 비밀번호를 바꿈
     document.querySelectorAll('.admin-only').forEach(function(n){ n.hidden = user.role !== '관리자'; });
     show('viewApp');
     go(current === 'users' || current === 'alllogs' ? (user.role === '관리자' ? current : 'write') : current);
@@ -70,6 +71,7 @@
     busy($('pwBtn'), true, '바꾸는 중…');
     try {
       var r = await api('changePassword', { current: cur, next: n1 });
+      if (r.token) TAEUI.setSession({ token: r.token });
       enter(r.user);
     } catch(err) { msg('pwMsg', err.message); }
     finally { busy($('pwBtn'), false); }
@@ -79,6 +81,7 @@
   async function logout(){
     try { await api('logout'); } catch(e){}
     TAEUI.setSession(null); me = null;
+    if (TAEUI.clearIssue) TAEUI.clearIssue();
     $('loginId').value = ''; msg('loginMsg', '');
     show('viewLogin');
   }
@@ -89,8 +92,7 @@
     current = tab;
     document.querySelectorAll('.tab').forEach(function(t){ t.setAttribute('aria-selected', String(t.dataset.tab === tab)); });
     document.querySelectorAll('[data-view]').forEach(function(v){ v.hidden = v.dataset.view !== tab; });
-    if (tab === 'write' && TAEUI.toolShown) TAEUI.toolShown();
-    if (tab === 'mylogs') loadLogs('mylogs');
+        if (tab === 'mylogs') loadLogs('mylogs');
     if (tab === 'alllogs') loadLogs('alllogs');
     if (tab === 'users') loadUsers();
   }
@@ -101,17 +103,18 @@
 
   // ===== 이력 =====
   async function loadLogs(kind){
-    var body = kind + 'Body';
-    rowMsg(body, 5, '불러오는 중…');
+    var body = kind + 'Body', cols = kind === 'mylogs' ? 3 : 4;
+    rowMsg(body, cols, '불러오는 중…');
     try {
       var r = await api(kind === 'mylogs' ? 'myLogs' : 'admin.listLogs');
-      if (!r.logs.length) { rowMsg(body, 5, '아직 작성한 신청서가 없어요. 신청서 작성 탭에서 PDF를 만들면 여기에 기록돼요.'); return; }
+      if (!r.logs.length) { rowMsg(body, cols, '아직 발급 기록이 없어요. 4대보험 청구에서 PDF를 내려받으면 여기에 기록돼요.'); return; }
       $(body).innerHTML = r.logs.map(function(l){
+        var fp = '<span class="muted" title="' + esc(l.sha256) + '">' + esc((l.sha256 || '').slice(0, 12)) + '</span>';
         return kind === 'mylogs'
-          ? '<tr><td>' + esc(when(l.at)) + '</td><td>' + esc(l.employee) + '</td><td>' + esc(l.rrn) + '</td><td class="wrapcell">' + esc(l.fileName) + '</td><td class="wrapcell muted">' + esc(l.source) + '</td></tr>'
-          : '<tr><td>' + esc(when(l.at)) + '</td><td>' + esc(l.writer) + ' <span class="muted">' + esc(l.id) + '</span></td><td>' + esc(l.employee) + '</td><td>' + esc(l.rrn) + '</td><td class="wrapcell">' + esc(l.fileName) + '</td></tr>';
+          ? '<tr><td>' + esc(when(l.at)) + '</td><td class="wrapcell">' + esc(l.doc) + '</td><td>' + fp + '</td></tr>'
+          : '<tr><td>' + esc(when(l.at)) + '</td><td>' + esc(l.writer) + ' <span class="muted">' + esc(l.id) + '</span></td><td class="wrapcell">' + esc(l.doc) + '</td><td>' + fp + '</td></tr>';
       }).join('');
-    } catch(err) { rowMsg(body, 5, err.message); }
+    } catch(err) { rowMsg(body, cols, err.message); }
   }
 
   // ===== 계정 관리 =====
@@ -131,7 +134,7 @@
         '<td><span class="pill ' + (u.status === '사용' ? 'on' : 'off') + '">' + esc(u.status) + '</span>' + (u.mustChange ? ' <span class="muted">임시 비밀번호</span>' : '') + '</td>' +
         '<td>' + (u.lastLogin ? esc(when(u.lastLogin)) : '<span class="muted">없음</span>') + '</td>' +
         '<td><div class="acts">' +
-          '<button class="ghost" type="button" data-act="reset">비밀번호 초기화</button>' +
+          '<button class="ghost" type="button" data-act="setpw">비밀번호 지정</button>' +
           (self ? '' : '<button class="ghost" type="button" data-act="role">' + (u.role === '관리자' ? '직원으로' : '관리자로') + '</button>') +
           (self ? '' : '<button class="ghost' + (u.status === '사용' ? ' danger' : '') + '" type="button" data-act="status">' + (u.status === '사용' ? '사용 중지' : '다시 사용') + '</button>') +
         '</div></td></tr>';
@@ -154,6 +157,7 @@
     var btn = e.target.closest('button[data-act]'); if (!btn) return;
     var id = btn.closest('tr').dataset.id, act = btn.dataset.act;
     var u = users.filter(function(x){ return x.id === id; })[0]; if (!u) return;
+    if (act === 'setpw') { openSetPw(u); return; }
     var key = id + ':' + act;
     if (pending !== key) {
       pending = key;
@@ -164,10 +168,7 @@
     pending = null; msg('usersMsg', ''); $('tempBox').hidden = true;
     busy(btn, true);
     try {
-      if (act === 'reset') {
-        var r = await api('admin.resetPassword', { id: id });
-        showTemp(u.name, id, r.tempPassword);
-      } else if (act === 'role') {
+      if (act === 'role') {
         await api('admin.updateUser', { id: id, role: u.role === '관리자' ? '직원' : '관리자' });
       } else if (act === 'status') {
         await api('admin.updateUser', { id: id, status: u.status === '사용' ? '중지' : '사용' });
@@ -182,12 +183,43 @@
     if (!name) { msg('usersMsg', '이름을 입력해 주세요.'); return; }
     busy($('addBtn'), true, '등록 중…');
     try {
-      var r = await api('admin.addUser', { id: id, name: name, role: $('addRole').value });
-      $('addId').value = ''; $('addName').value = ''; $('addRole').value = '직원';
-      showTemp(r.user.name, r.user.id, r.tempPassword);
+      var pw = $('addPw').value;
+      if (pw && (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw))) { msg('usersMsg', '비밀번호는 영문과 숫자를 섞어 8자 이상이어야 해요.'); return; }
+      var r = await api('admin.addUser', { id: id, name: name, role: $('addRole').value, password: pw });
+      $('addId').value = ''; $('addName').value = ''; $('addRole').value = '직원'; $('addPw').value = '';
+      if (r.tempPassword) showTemp(r.user.name, r.user.id, r.tempPassword);
+      else { $('tempBox').innerHTML = '<strong>' + esc(r.user.name) + ' (' + esc(r.user.id) + ')</strong> 계정을 만들었어요. 정하신 비밀번호로 로그인하면 됩니다.'; $('tempBox').hidden = false; }
       users = (await api('admin.listUsers')).users; drawUsers();
     } catch(err) { msg('usersMsg', err.message); }
     finally { busy($('addBtn'), false); }
+  });
+
+  // ===== 비밀번호 지정 (관리자) =====
+  var pwTarget = null;
+  function openSetPw(u){
+    pwTarget = u; $('tempBox').hidden = true; msg('usersMsg', '');
+    $('setPwWho').textContent = u.name + ' (' + u.id + ')';
+    $('setPwNew').value = ''; $('setPwAdmin').value = ''; msg('setPwMsg', '');
+    $('setPwBox').hidden = false; $('setPwNew').focus();
+  }
+  $('setPwCancel').addEventListener('click', function(){ $('setPwBox').hidden = true; pwTarget = null; });
+  $('setPwForm').addEventListener('submit', async function(e){
+    e.preventDefault(); msg('setPwMsg', '');
+    if (!pwTarget) return;
+    var pw = $('setPwNew').value, adminPw = $('setPwAdmin').value;
+    if (pw && (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw))) { msg('setPwMsg', '새 비밀번호는 영문과 숫자를 섞어 8자 이상이어야 해요.'); return; }
+    if (!adminPw) { msg('setPwMsg', '확인을 위해 관리자 비밀번호를 입력해 주세요.'); return; }
+    busy($('setPwBtn'), true, '바꾸는 중…');
+    try {
+      var r = await api('admin.resetPassword', { id: pwTarget.id, password: pw, adminPassword: adminPw });
+      if (r.token) TAEUI.setSession({ token: r.token });
+      $('setPwBox').hidden = true;
+      if (r.tempPassword) showTemp(pwTarget.name, pwTarget.id, r.tempPassword);
+      else { $('tempBox').innerHTML = '<strong>' + esc(pwTarget.name) + ' (' + esc(pwTarget.id) + ')</strong> 비밀번호를 바꿨어요. 이 계정으로 로그인해 있던 화면은 모두 로그아웃돼요.'; $('tempBox').hidden = false; }
+      pwTarget = null;
+      users = (await api('admin.listUsers')).users; drawUsers();
+    } catch(err) { msg('setPwMsg', err.message); }
+    finally { busy($('setPwBtn'), false); }
   });
 
   // ===== 시작 =====

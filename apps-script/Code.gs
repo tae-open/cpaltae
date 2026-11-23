@@ -3,16 +3,24 @@
  *
  * 이 스크립트는 구글 시트에 붙여서(확장 프로그램 > Apps Script) 사용합니다.
  *  - '계정' 시트: 직원 계정 (비밀번호는 해시로만 저장)
- *  - '이력' 시트: 신청서 작성 이력 (주민등록번호는 뒷자리를 가려서 저장)
+ *  - '발급기록' 시트: PDF 발급 기록 (누가·언제·어떤 서류·파일 지문만 — 개인정보는 기록하지 않음)
  *
  * 처음 한 번: 편집기에서 setup 함수를 실행하세요. 관리자 계정(admin)과 임시 비밀번호가
  * 실행 로그에 표시됩니다. 그다음 [배포 > 새 배포 > 웹 앱]으로 배포하고 URL을 config.js에 넣으세요.
  */
 
 var SHEET_USERS = '계정';
-var SHEET_LOG = '이력';
+var SHEET_LOG = '발급기록';
 var USER_HEADERS = ['아이디', '이름', '역할', '상태', '솔트', '비밀번호해시', '비밀번호변경필요', '생성일', '마지막로그인'];
-var LOG_HEADERS = ['일시', '아이디', '작성자', '근로자명', '주민등록번호(가림)', '파일명', '원본 신청서'];
+var LOG_HEADERS = ['일시', '아이디', '작성자', '서류', '파일 지문(SHA-256)'];
+// 화면의 내려받기 버튼(묶음) → 서류 이름. 이 목록에 없는 값은 기록하지 않음
+var BUNDLE_NAMES = {
+  nps: '국민연금 증명원 발급 신청서',
+  tax_income: '소득금액증명원 발급 신청서 및 위임장',
+  tax_daily: '일용근로소득증명원 발급 신청서 및 위임장',
+  tax_all: '세무서 제출서류 일괄(소득금액증명원·일용근로소득증명원)',
+  comwel: '고용보험 발급 신청서 및 위임장'
+};
 var COL = { id: 0, name: 1, role: 2, status: 3, salt: 4, hash: 5, mustChange: 6, created: 7, lastLogin: 8 };
 var SESSION_SECONDS = 6 * 60 * 60;   // 로그인 유지 6시간 (CacheService 최대치)
 var MAX_FAILS = 5;                   // 비밀번호 5번 틀리면
@@ -108,7 +116,7 @@ function login_(req) {
   cache.remove('fail:' + id);
 
   var token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
-  cache.put('s:' + token, user.id, SESSION_SECONDS);
+  cache.put('s:' + token, user.id + '|' + sessionVersion_(user.id), SESSION_SECONDS);
   updateUserField_(user.id, COL.lastLogin, new Date());
   return { token: token, user: publicUser_(user) };
 }
@@ -124,20 +132,29 @@ function me_(req) {
 
 function changePassword_(req) {
   var user = auth_(req, { allowMustChange: true });
+  if (user.role !== '관리자') throw appError_('직원 계정의 비밀번호는 관리자만 바꿀 수 있어요.');
   if (user.hash !== hash_(String(req.current || ''), user.salt)) throw appError_('현재 비밀번호가 맞지 않아요.');
   var next = String(req.next || '');
   checkPassword_(next);
   if (next === String(req.current)) throw appError_('새 비밀번호는 현재 비밀번호와 달라야 해요.');
   setPassword_(user.id, next, false);
-  return { user: publicUser_(findUser_(user.id)) };
+  var token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+  CacheService.getScriptCache().put('s:' + token, user.id + '|' + sessionVersion_(user.id), SESSION_SECONDS);
+  return { user: publicUser_(findUser_(user.id)), token: token };
 }
 
 /** 토큰을 확인하고 최신 계정 정보를 돌려줍니다. */
 function auth_(req, opts) {
   opts = opts || {};
   var token = String(req.token || '');
-  var id = token ? CacheService.getScriptCache().get('s:' + token) : null;
+  var saved = token ? CacheService.getScriptCache().get('s:' + token) : null;
+  var parts = saved ? String(saved).split('|') : [];
+  var id = parts[0];
   if (!id) throw appError_('로그인이 필요해요. 다시 로그인해 주세요.', 'AUTH');
+  if (parts[1] !== sessionVersion_(id)) {   // 비밀번호가 바뀌면 그 전에 로그인한 화면은 모두 로그아웃
+    CacheService.getScriptCache().remove('s:' + token);
+    throw appError_('비밀번호가 바뀌어 로그아웃됐어요. 새 비밀번호로 다시 로그인해 주세요.', 'AUTH');
+  }
   var user = findUser_(id);
   if (!user || user.status !== '사용') {
     CacheService.getScriptCache().remove('s:' + token);
@@ -152,14 +169,12 @@ function auth_(req, opts) {
 
 function logCreate_(req) {
   var user = auth_(req);
-  var rrn = String(req.rrn || '').replace(/[^0-9]/g, '');
-  var masked = rrn.length >= 7 ? rrn.slice(0, 6) + '-' + rrn.charAt(6) + '******' : '';
+  var name = BUNDLE_NAMES[String(req.bundleKey || '')];
+  if (!name) throw appError_('알 수 없는 서류예요.');
+  var sha = String(req.sha256 || '').toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(sha)) throw appError_('파일 지문 형식이 올바르지 않아요.');
   withLock_(function () {
-    sheet_(SHEET_LOG).appendRow([
-      new Date(), user.id, user.name,
-      safe_(req.employeeName, 50), masked,
-      safe_(req.fileName, 200), safe_(req.sourceName, 200)
-    ]);
+    sheet_(SHEET_LOG).appendRow([new Date(), user.id, user.name, name, sha]);
   });
   return {};
 }
@@ -182,7 +197,7 @@ function readLogs_(filter, limit) {
   var out = [];
   for (var i = rows.length - 1; i >= 0 && out.length < limit; i--) {
     var r = rows[i];
-    var item = { at: toIso_(r[0]), id: String(r[1]), writer: String(r[2]), employee: String(r[3]), rrn: String(r[4]), fileName: String(r[5]), source: String(r[6]) };
+    var item = { at: toIso_(r[0]), id: String(r[1]), writer: String(r[2]), doc: String(r[3]), sha256: String(r[4]) };
     if (!filter || filter(item)) out.push(item);
   }
   return out;
@@ -202,12 +217,16 @@ function adminAddUser_(req) {
   var name = safe_(req.name, 30);
   if (!name) throw appError_('이름을 입력해 주세요.');
   var role = req.role === '관리자' ? '관리자' : '직원';
-  var temp = tempPassword_();
+  var direct = String(req.password || '');
+  if (direct) checkPassword_(direct);
+  var password = direct || tempPassword_();
+  // 직원(공용) 계정은 본인이 비밀번호를 바꿀 수 없으므로 처음 로그인 때 바꾸라고 하지 않음
+  var mustChange = role === '관리자' && !direct;
   withLock_(function () {
     if (findUser_(id)) throw appError_('이미 있는 아이디예요.');
-    appendUser_(id, name, role, temp);
+    appendUser_(id, name, role, password, mustChange);
   });
-  return { user: publicUser_(findUser_(id)), tempPassword: temp };
+  return { user: publicUser_(findUser_(id)), tempPassword: direct ? '' : password };
 }
 
 function adminUpdateUser_(req) {
@@ -227,23 +246,38 @@ function adminUpdateUser_(req) {
     updateUserField_(id, COL.role, role);
     updateUserField_(id, COL.status, status);
   });
+  if (status !== '사용') endSessions_(id);
   return { user: publicUser_(findUser_(id)) };
 }
 
+/** 관리자가 계정 비밀번호를 정함(직접 입력 또는 자동 생성). 관리자 본인 비밀번호를 다시 확인하고,
+ *  그 계정으로 이미 로그인한 화면은 모두 로그아웃시킴. */
 function adminResetPassword_(req) {
-  auth_(req, { admin: true });
+  var me = auth_(req, { admin: true });
+  if (me.hash !== hash_(String(req.adminPassword || ''), me.salt)) throw appError_('관리자 비밀번호가 맞지 않아요.');
   var id = cleanId_(req.id);
-  if (!findUser_(id)) throw appError_('없는 계정이에요.');
-  var temp = tempPassword_();
-  withLock_(function () { setPassword_(id, temp, true); });
+  var target = findUser_(id);
+  if (!target) throw appError_('없는 계정이에요.');
+  var direct = String(req.password || '');
+  if (direct) checkPassword_(direct);
+  var password = direct || tempPassword_();
+  var mustChange = target.role === '관리자' && !direct && id !== me.id;
+  withLock_(function () { setPassword_(id, password, mustChange); });
   CacheService.getScriptCache().remove('fail:' + id);
-  return { tempPassword: temp };
+  if (id === me.id) {   // 내 비밀번호를 바꿨으면 지금 화면은 새 세션으로 이어 줌
+    var token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+    CacheService.getScriptCache().put('s:' + token, id + '|' + sessionVersion_(id), SESSION_SECONDS);
+    return { tempPassword: direct ? '' : password, token: token };
+  }
+  return { tempPassword: direct ? '' : password };
 }
 
 // ===================== 시트 도우미 =====================
 
 function sheet_(name) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (name === SHEET_LOG) return ensureSheet_(ss, SHEET_LOG, LOG_HEADERS);   // 새 기록 시트는 처음 쓸 때 만듦
+  var sh = ss.getSheetByName(name);
   if (!sh) throw appError_('시트가 준비되지 않았어요. Apps Script 편집기에서 setup을 먼저 실행해 주세요.');
   return sh;
 }
@@ -278,9 +312,18 @@ function findUser_(id) {
   return null;
 }
 
-function appendUser_(id, name, role, password) {
+function appendUser_(id, name, role, password, mustChange) {
   var salt = Utilities.getUuid();
-  sheet_(SHEET_USERS).appendRow([id, name, role, '사용', salt, hash_(password, salt), true, new Date(), '']);
+  sheet_(SHEET_USERS).appendRow([id, name, role, '사용', salt, hash_(password, salt), mustChange !== false, new Date(), '']);
+}
+
+/** 계정별 세션 번호 — 비밀번호를 바꾸면 올라가서 그 전 로그인은 모두 끊김 */
+function sessionVersion_(id) {
+  return PropertiesService.getScriptProperties().getProperty('sv:' + id) || '0';
+}
+function endSessions_(id) {
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('sv:' + id, String(Number(props.getProperty('sv:' + id) || 0) + 1));
 }
 
 function setPassword_(id, password, mustChange) {
@@ -288,6 +331,7 @@ function setPassword_(id, password, mustChange) {
   updateUserField_(id, COL.salt, salt);
   updateUserField_(id, COL.hash, hash_(password, salt));
   updateUserField_(id, COL.mustChange, !!mustChange);
+  endSessions_(id);
 }
 
 function updateUserField_(id, col, value) {
