@@ -4,8 +4,9 @@
   var api = TAEUI.api, esc = TAEUI.esc, when = TAEUI.fmtDateTime;
   var me = null, current = 'write';
 
-  var office = (window.TAEUI_CONFIG && TAEUI_CONFIG.OFFICE_NAME) || '노무법인 태의';
+  var office = (window.TAEUI_CONFIG && TAEUI_CONFIG.OFFICE_NAME) || '노무법인 태(泰)';
   document.querySelectorAll('[data-office]').forEach(function(n){ n.textContent = office; });
+  document.querySelectorAll('[data-office-alt]').forEach(function(n){ n.alt = office; });
 
   function show(view){
     ['viewLogin','viewPw','viewApp'].forEach(function(id){ $(id).hidden = id !== view; });

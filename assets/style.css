@@ -190,3 +190,10 @@ td .acts{display:flex;gap:6px}
 .preview-pages figcaption{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
 .setpw h3{font-size:14px;margin:16px 0 0}
 #setPwBox{margin-top:10px;padding:12px 14px;border:1px solid var(--focus);border-radius:6px;background:var(--ok-bg)}
+
+/* 사무소 로고 */
+.logo{display:block;line-height:0}
+.logo img{display:block;height:34px;width:auto}
+.logo-lg{margin:0 0 18px}
+.logo-lg img{height:46px}
+@media (max-width:640px){.logo img{height:28px}}

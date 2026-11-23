@@ -2,5 +2,5 @@
 // 예: https://script.google.com/macros/s/AKfycb.../exec
 window.TAEUI_CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbznCZyZL2vQ977GarjCr0LlKgxMcxF5yfT0QGhlt5oiuojtNrH_DfM9Y6hEPwcXIG9DGw/exec',
-  OFFICE_NAME: '노무법인 태의'
+  OFFICE_NAME: '노무법인 태(泰)'
 };
