@@ -97,7 +97,10 @@
     if (tab === 'alllogs') loadLogs('alllogs');
     if (tab === 'users') loadUsers();
   }
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click', function(){ go(t.dataset.tab); }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click', function(){
+    go(t.dataset.tab);
+    if (t.dataset.tab === 'write' && TAEUI.issueHome) TAEUI.issueHome();   // 누르면 항상 위임자·수임자 입력 화면
+  }); });
   document.querySelectorAll('[data-reload]').forEach(function(b){ b.addEventListener('click', function(){ go(b.dataset.reload); }); });
 
   function rowMsg(body, cols, text){ $(body).innerHTML = '<tr><td class="none" colspan="' + cols + '">' + esc(text) + '</td></tr>'; }

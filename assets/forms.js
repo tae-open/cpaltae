@@ -16,6 +16,7 @@
   var GENERIC = ['nps_certificate','nts_civil_request','nts_power_of_attorney','comwel_certificate','comwel_4insure_poa'];
   var FORM7 = 'nts_withholding_receipt';
   var SUBMIT_TO = '근로복지공단';
+  var FORM7_ETC_DETAIL = '일용근로소득 지급명세서 상세내역, 2006~현재, 1매';
 
   function GenerationError(msg){ var e = new Error(msg); e.name = 'GenerationError'; return e; }
 
@@ -211,7 +212,8 @@
       'taxpayer.sign_name': dg.name, 'office': '',
       'poa.date.year': String(d.y), 'poa.date.month': String(d.m).padStart(2,'0'), 'poa.date.day': String(d.d),
       'poa.taxpayer_name': dg.name, 'poa.agent.name': de.name, 'poa.agent.rrn': de.rrn, 'poa.agent.phone': de.phone,
-      'consent.taxpayer_name': dg.name, 'consent.agent_name': de.name
+      'consent.taxpayer_name': dg.name, 'consent.agent_name': de.name,
+      'etc.detail': FORM7_ETC_DETAIL   // 기타 민원 '기타 ( )' 칸 (2026-11-23 요청)
     };
   }
 
@@ -366,7 +368,8 @@
     g.drawImage(bmp, 0, 0); bmp.close && bmp.close();
     var blob = await new Promise(function(res){ c.toBlob(res, type === 'jpg' ? 'image/jpeg' : 'image/png', 0.92); });
     if (!blob) throw ImageError('이미지를 처리하지 못했어요. 다른 파일로 시도해 주세요.');
-    return { type: type, bytes: new Uint8Array(await blob.arrayBuffer()), w: c.width, h: c.height, url: URL.createObjectURL(blob) };
+    return { type: type, bytes: new Uint8Array(await blob.arrayBuffer()), w: c.width, h: c.height, url: URL.createObjectURL(blob),
+             source: file };   // source: 글자 읽기용 원본(메모리에만, PDF 에는 정리된 bytes 를 씀)
   }
 
   window.TaeForms = { _specs: function(){ return assets && assets.specs; }, loadAssets: loadAssets, buildAll: buildAll, cleanImage: cleanImage, sha256Hex: sha256Hex,

@@ -106,7 +106,7 @@
           <div class="grid"><div class="field"><label for="issueDate">발급 날짜 (기본: 오늘)</label><input id="issueDate" type="date" required></div></div>
         </section>
 
-        <p class="privacy">입력한 정보와 신분증 이미지는 이 브라우저 안에서만 처리되고 서버로 보내지 않아요. 30분이 지나거나 로그아웃하면 지워집니다.
+        <p class="privacy">신분증을 올리면 성명·주민등록번호·주소를 읽어 칸을 채워요(색이 칠해진 칸 — 꼭 확인해 주세요). 입력한 정보와 신분증 이미지는 이 브라우저 안에서만 처리되고 서버로 보내지 않아요. 30분이 지나거나 로그아웃하면 지워집니다.
           <span class="muted">(발급 기록에는 직원·시각·서류 종류만 남고, 입력한 개인정보는 남지 않아요.)</span></p>
         <div class="actions"><button type="submit" class="btn wide-btn" id="nextBtn">다음</button></div>
       </form>
@@ -183,6 +183,7 @@
 </div>
 
 <script src="assets/forms.js" charset="utf-8"></script>
+<script src="assets/ocr.js" charset="utf-8"></script>
 <script src="assets/issue.js" charset="utf-8"></script>
 <script src="assets/app.js" charset="utf-8"></script>
 </body>

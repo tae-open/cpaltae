@@ -55,8 +55,49 @@
       var img = await TaeForms.cleanImage(file);
       if (state.images[role]) URL.revokeObjectURL(state.images[role].url);
       state.images[role] = img; touch(); drawZone(role);
-    } catch(e) { st.textContent = e.message; st.classList.add('bad'); }
+    } catch(e) { st.textContent = e.message; st.classList.add('bad'); return; }
+    readId(role, img);
   }
+
+  // ===== 신분증 글자 읽어 칸 채우기 (브라우저 안에서만, assets/ocr.js) =====
+  var OCR_FIELDS = {
+    delegator: [['name','dgName','성명'], ['rrn','dgRrn','주민등록번호'], ['address','dgAddr','주소']],
+    delegatee: [['name','deName','성명'], ['rrn','deRrn','주민등록번호']]
+  };
+  function fillAuto(id, value){
+    var el = $(id);
+    if (!value) return 'none';
+    if (el.value.trim() && el.dataset.auto !== el.value) return 'kept';   // 직접 입력한 값은 덮어쓰지 않음
+    el.value = value; el.dataset.auto = value; el.classList.add('auto');
+    return 'filled';
+  }
+  async function readId(role, img){
+    if (!window.TaeOCR) return;
+    var status = function(text, bad){
+      var z = document.querySelector('.dropzone[data-role="' + role + '"] .dz-status');
+      if (z && state.images[role] === img) { z.textContent = text; z.classList.toggle('bad', !!bad); }
+    };
+    status('신분증 글자를 읽는 중…');
+    try {
+      var r = await TaeOCR.readId(img.source, function(t){ status(t); });
+      if (state.images[role] !== img) return;   // 그사이 다른 사진으로 바뀜
+      var filled = [], missed = [], kept = [];
+      OCR_FIELDS[role].forEach(function(f){
+        var res = fillAuto(f[1], r[f[0]]);
+        (res === 'filled' ? filled : res === 'kept' ? kept : missed).push(f[2]);
+      });
+      var msgs = [];
+      if (filled.length) msgs.push('신분증에서 읽어 채웠어요: ' + filled.join(', ') + '. 틀린 글자가 없는지 꼭 확인해 주세요.');
+      if (kept.length) msgs.push('이미 입력한 값은 그대로 두었어요: ' + kept.join(', ') + '.');
+      if (missed.length) msgs.push('읽지 못한 칸: ' + missed.join(', ') + ' — 직접 입력해 주세요.');
+      status(msgs.join(' '), !filled.length);
+    } catch(e) {
+      status('신분증 글자를 읽지 못했어요. 직접 입력해 주세요. (' + e.message + ')', true);
+    }
+  }
+  ['dgName','dgRrn','dgAddr','deName','deRrn'].forEach(function(id){
+    $(id).addEventListener('input', function(){ if (this.value !== this.dataset.auto) this.classList.remove('auto'); });
+  });
   document.querySelectorAll('.dropzone').forEach(function(z){
     var role = z.dataset.role;
     drawZone(role);
@@ -118,6 +159,7 @@
     drawCase(); window.scrollTo(0, 0);
   }
   function showIssue(){ $('caseView').hidden = true; $('issueForm').hidden = false; window.scrollTo(0, 0); }
+  TAEUI.issueHome = showIssue;   // 위쪽 '4대보험 청구' 탭을 누르면 입력 화면으로
   $('editCase').addEventListener('click', showIssue);
 
   var newArmed = false;
@@ -208,6 +250,7 @@
     document.querySelectorAll('.dropzone').forEach(function(z){ drawZone(z.dataset.role); });
     $('previewPages').innerHTML = ''; $('caseSide').innerHTML = '';
     ['dgRrn','deRrn'].forEach(function(id){ $(id).type = 'password'; });
+    ['dgName','dgRrn','dgAddr','deName','deRrn'].forEach(function(id){ $(id).classList.remove('auto'); delete $(id).dataset.auto; });
     document.querySelectorAll('[data-toggle]').forEach(function(b){ b.textContent = '보기'; });
   }
   TAEUI.clearIssue = function(){ clearAll(); showIssue(); msg('issueMsg', ''); };
