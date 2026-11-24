@@ -2,7 +2,20 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var api = TAEUI.api, esc = TAEUI.esc, when = TAEUI.fmtDateTime;
-  var me = null, current = 'write';
+  var me = null, current = 'home';
+
+  // ===== 화면 주소(#…) — 새로 고침하거나 주소로 바로 들어와도 같은 화면 =====
+  var ROUTES = {
+    home: { view: 'home', title: '메인 화면' },
+    'my-records': { view: 'mylogs', title: '내 발급 기록' },
+    accounts: { view: 'users', title: '직원 계정 관리', admin: true },
+    'all-records': { view: 'alllogs', title: '전체 발급 기록', admin: true }
+  };
+  TaeWorkspaces.list.forEach(function(w){ ROUTES[w.route] = { view: w.ready ? w.view : 'preparing', title: w.title, ws: w }; });
+  function routeFromHash(){
+    var h = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+    return ROUTES[h] ? h : 'home';
+  }
 
   var office = (window.TAEUI_CONFIG && TAEUI_CONFIG.OFFICE_NAME) || '노무법인 태(泰)';
   document.querySelectorAll('[data-office]').forEach(function(n){ n.textContent = office; });
@@ -44,11 +57,12 @@
     me = user;
     if (user.mustChange) { openPw(true); return; }
     $('whoName').textContent = user.name;
-    $('whoRole').textContent = user.role;
+    $('whoRole').textContent = '(' + user.role + ')';
+    $('homeHello').textContent = user.name + '님(' + user.role + '), 처리할 업무를 선택해 주세요.';
     $('chgPw').hidden = user.role !== '관리자';   // 직원(공용) 계정은 관리자만 비밀번호를 바꿈
     document.querySelectorAll('.admin-only').forEach(function(n){ n.hidden = user.role !== '관리자'; });
     show('viewApp');
-    go(current === 'users' || current === 'alllogs' ? (user.role === '관리자' ? current : 'write') : current);
+    go(routeFromHash());   // 로그인하면 통합 업무시스템 메인 화면(주소에 다른 화면이 있으면 그 화면)
   }
 
   // ===== 비밀번호 변경 =====
@@ -83,40 +97,54 @@
     try { await api('logout'); } catch(e){}
     TAEUI.setSession(null); me = null;
     if (TAEUI.clearIssue) TAEUI.clearIssue();
+    history.replaceState(null, '', '#home');   // 다음 로그인은 메인 화면부터
     $('loginId').value = ''; msg('loginMsg', '');
     show('viewLogin');
   }
   $('logout').addEventListener('click', logout);
 
-  // ===== 탭 =====
-  function go(tab){
-    current = tab;
-    document.querySelectorAll('.tab').forEach(function(t){ t.setAttribute('aria-selected', String(t.dataset.tab === tab)); });
-    document.querySelectorAll('[data-view]').forEach(function(v){ v.hidden = v.dataset.view !== tab; });
-        if (tab === 'mylogs') loadLogs('mylogs');
-    if (tab === 'alllogs') loadLogs('alllogs');
-    if (tab === 'users') loadUsers();
+  // ===== 화면 이동 =====
+  function go(route){
+    var r = ROUTES[route] || ROUTES.home;
+    if (r.admin && (!me || me.role !== '관리자')) { route = 'home'; r = ROUTES.home; }
+    current = route;
+    if (location.hash !== '#' + route) history.replaceState(null, '', '#' + route);
+    document.querySelectorAll('.tab[data-route]').forEach(function(t){
+      if (t.dataset.route === route) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('[data-view]').forEach(function(v){ v.hidden = v.dataset.view !== r.view; });
+    document.title = (route === 'home' ? '' : r.title + ' · ') + '노무법인 태(泰) 통합 업무시스템';
+    if (r.view === 'home') TaeWorkspaces.renderHome($('wsGrid'), function(w){ return w === 'insurance' && TAEUI.issueHasData && TAEUI.issueHasData(); });
+    if (r.view === 'preparing') TaeWorkspaces.renderPreparing($('preparingBox'), r.ws);
+    if (r.view === 'write' && TAEUI.issueHome) TAEUI.issueHome();   // 들어올 때마다 위임자·수임자 입력 화면(입력값은 유지)
+    if (r.view === 'mylogs') loadLogs('mylogs');
+    if (r.view === 'alllogs') loadLogs('alllogs');
+    if (r.view === 'users') loadUsers();
+    window.scrollTo(0, 0);
   }
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click', function(){
-    go(t.dataset.tab);
-    if (t.dataset.tab === 'write' && TAEUI.issueHome) TAEUI.issueHome();   // 누르면 항상 위임자·수임자 입력 화면
+  window.addEventListener('hashchange', function(){ if (me && !$('viewApp').hidden) go(routeFromHash()); });
+  // 지금 보고 있는 화면의 메뉴를 다시 눌러도 다시 열리게(주소가 같으면 hashchange 가 안 생김)
+  document.addEventListener('click', function(e){
+    var a = e.target.closest('#viewApp a[href^="#"]');
+    if (a && a.getAttribute('href') === location.hash) { e.preventDefault(); go(location.hash.slice(1)); }
+  });
+  document.querySelectorAll('[data-reload]').forEach(function(b){ b.addEventListener('click', function(){
+    var k = b.dataset.reload; if (k === 'users') loadUsers(); else loadLogs(k);
   }); });
-  document.querySelectorAll('[data-reload]').forEach(function(b){ b.addEventListener('click', function(){ go(b.dataset.reload); }); });
 
   function rowMsg(body, cols, text){ $(body).innerHTML = '<tr><td class="none" colspan="' + cols + '">' + esc(text) + '</td></tr>'; }
 
   // ===== 이력 =====
   async function loadLogs(kind){
-    var body = kind + 'Body', cols = kind === 'mylogs' ? 3 : 4;
+    var body = kind + 'Body', cols = 5;
     rowMsg(body, cols, '불러오는 중…');
     try {
       var r = await api(kind === 'mylogs' ? 'myLogs' : 'admin.listLogs');
       if (!r.logs.length) { rowMsg(body, cols, '아직 발급 기록이 없어요. 4대보험 청구에서 PDF를 내려받으면 여기에 기록돼요.'); return; }
       $(body).innerHTML = r.logs.map(function(l){
-        var fp = '<span class="muted" title="' + esc(l.sha256) + '">' + esc((l.sha256 || '').slice(0, 12)) + '</span>';
-        return kind === 'mylogs'
-          ? '<tr><td>' + esc(when(l.at)) + '</td><td class="wrapcell">' + esc(l.doc) + '</td><td>' + fp + '</td></tr>'
-          : '<tr><td>' + esc(when(l.at)) + '</td><td>' + esc(l.writer) + ' <span class="muted">' + esc(l.id) + '</span></td><td class="wrapcell">' + esc(l.doc) + '</td><td>' + fp + '</td></tr>';
+        var blank = '<span class="muted">—</span>';   // 이름 칸이 생기기 전의 기록
+        return '<tr><td>' + esc(when(l.at)) + '</td><td>' + (l.delegator ? esc(l.delegator) : blank) + '</td><td>' + (l.delegatee ? esc(l.delegatee) : blank) +
+          '</td><td class="wrapcell" title="파일 지문 ' + esc(l.sha256) + '">' + esc(l.doc) + '</td><td>' + esc(l.writer) + ' <span class="muted">' + esc(l.id) + '</span></td></tr>';
       }).join('');
     } catch(err) { rowMsg(body, cols, err.message); }
   }

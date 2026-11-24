@@ -36,8 +36,10 @@
   function fmtDateTime(iso){
     if (!iso) return '';
     var d = new Date(iso); if (isNaN(d)) return iso;
+    // 어느 나라에서 열어도 한국 시간(KST)으로 표시
+    var k = new Date(d.getTime() + 9 * 3600 * 1000);
     var p = function(n){ return String(n).padStart(2,'0'); };
-    return d.getFullYear() + '.' + p(d.getMonth()+1) + '.' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    return k.getUTCFullYear() + '.' + p(k.getUTCMonth()+1) + '.' + p(k.getUTCDate()) + ' ' + p(k.getUTCHours()) + ':' + p(k.getUTCMinutes());
   }
   function esc(s){ var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 

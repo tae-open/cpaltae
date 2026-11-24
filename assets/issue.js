@@ -5,7 +5,7 @@
   var esc = TAEUI.esc;
   var TTL_MS = 30 * 60 * 1000;
   var ROLES = { delegator: '위임자 신분증', delegatee: '수임자 신분증' };
-  var state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null };
+  var state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null, logged: {} };
 
   // ===== 입력 도우미 =====
   function today(){
@@ -25,12 +25,6 @@
       if (d.length > 7) out = d.slice(0,3) + '-' + d.slice(3, d.length - 4) + '-' + d.slice(-4);
       else if (d.length > 3) out = d.slice(0,3) + '-' + d.slice(3);
       e.target.value = out;
-    });
-  });
-  document.querySelectorAll('[data-toggle]').forEach(function(b){
-    b.addEventListener('click', function(){
-      var f = $(b.dataset.toggle), hidden = f.type === 'password';
-      f.type = hidden ? 'text' : 'password'; b.textContent = hidden ? '숨기기' : '보기';
     });
   });
   $('issueForm').addEventListener('input', function(){ $('issueMsg').hidden = true; });
@@ -159,7 +153,10 @@
     drawCase(); window.scrollTo(0, 0);
   }
   function showIssue(){ $('caseView').hidden = true; $('issueForm').hidden = false; window.scrollTo(0, 0); }
-  TAEUI.issueHome = showIssue;   // 위쪽 '4대보험 청구' 탭을 누르면 입력 화면으로
+  TAEUI.issueHome = showIssue;
+  TAEUI.issueHasData = function(){   // 메인 화면의 '작성 중인 서류 있음' 표시용
+    return !!(state.result || Object.keys(state.images).length || $('dgName').value.trim() || $('deName').value.trim());
+  };   // 위쪽 '4대보험 청구' 탭을 누르면 입력 화면으로
   $('editCase').addEventListener('click', showIssue);
 
   var newArmed = false;
@@ -237,21 +234,24 @@
     var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
     try {
-      await TAEUI.api('logCreate', { bundleKey: key, sha256: await TaeForms.sha256Hex(bundle.bytes) });
-      msg('caseMsg', '내려받았어요: ' + name, true);
+      var sha = await TaeForms.sha256Hex(bundle.bytes), once = key + ':' + sha;
+      if (state.logged[once]) { msg('caseMsg', '다시 내려받았어요: ' + name + ' (같은 파일이라 발급 기록은 한 번만 남겨요)', true); return; }
+      // 기록에는 위임자·수임자 이름만 보냄(주민등록번호·주소·전화번호는 보내지 않음)
+      var r = await TAEUI.api('logCreate', { bundleKey: key, sha256: sha,
+        delegatorName: state.input.delegator.name, delegateeName: state.input.delegatee.name });
+      state.logged[once] = true;
+      msg('caseMsg', r.duplicate ? '다시 내려받았어요: ' + name + ' (방금 기록된 같은 파일이라 다시 기록하지 않았어요)' : '내려받고 발급 기록에 남겼어요: ' + name, true);
     } catch(err) { msg('caseMsg', 'PDF는 내려받았지만 발급 기록을 남기지 못했어요. ' + err.message); }
   });
 
   // ===== 30분 보관 · 지우기 =====
   function clearAll(){
     Object.keys(state.images).forEach(function(r){ URL.revokeObjectURL(state.images[r].url); });
-    state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null };
+    state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null, logged: {} };
     $('issueForm').reset(); $('issueDate').value = today();
     document.querySelectorAll('.dropzone').forEach(function(z){ drawZone(z.dataset.role); });
     $('previewPages').innerHTML = ''; $('caseSide').innerHTML = '';
-    ['dgRrn','deRrn'].forEach(function(id){ $(id).type = 'password'; });
     ['dgName','dgRrn','dgAddr','deName','deRrn'].forEach(function(id){ $(id).classList.remove('auto'); delete $(id).dataset.auto; });
-    document.querySelectorAll('[data-toggle]').forEach(function(b){ b.textContent = '보기'; });
   }
   TAEUI.clearIssue = function(){ clearAll(); showIssue(); msg('issueMsg', ''); };
   setInterval(function(){

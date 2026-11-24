@@ -3,7 +3,7 @@
  *
  * 이 스크립트는 구글 시트에 붙여서(확장 프로그램 > Apps Script) 사용합니다.
  *  - '계정' 시트: 직원 계정 (비밀번호는 해시로만 저장)
- *  - '발급기록' 시트: PDF 발급 기록 (누가·언제·어떤 서류·파일 지문만 — 개인정보는 기록하지 않음)
+ *  - '발급기록' 시트: PDF 발급 기록 (언제·누가·어떤 서류·위임자 이름·수임자 이름·파일 지문 — 주민등록번호는 기록하지 않음)
  *
  * 처음 한 번: 편집기에서 setup 함수를 실행하세요. 관리자 계정(admin)과 임시 비밀번호가
  * 실행 로그에 표시됩니다. 그다음 [배포 > 새 배포 > 웹 앱]으로 배포하고 URL을 config.js에 넣으세요.
@@ -12,7 +12,9 @@
 var SHEET_USERS = '계정';
 var SHEET_LOG = '발급기록';
 var USER_HEADERS = ['아이디', '이름', '역할', '상태', '솔트', '비밀번호해시', '비밀번호변경필요', '생성일', '마지막로그인'];
-var LOG_HEADERS = ['일시', '아이디', '작성자', '서류', '파일 지문(SHA-256)'];
+// 기존 기록과 맞도록 새 칸(위임자·수임자)은 뒤에 붙임 — 예전 줄은 그 칸이 비어 있음
+var LOG_HEADERS = ['일시', '아이디', '작성자', '서류', '파일 지문(SHA-256)', '위임자', '수임자'];
+var DUP_WINDOW_MS = 10 * 60 * 1000;   // 같은 직원이 같은 파일을 10분 안에 다시 받으면 한 번만 기록
 // 화면의 내려받기 버튼(묶음) → 서류 이름. 이 목록에 없는 값은 기록하지 않음
 var BUNDLE_NAMES = {
   nps: '국민연금 증명원 발급 신청서',
@@ -173,10 +175,21 @@ function logCreate_(req) {
   if (!name) throw appError_('알 수 없는 서류예요.');
   var sha = String(req.sha256 || '').toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(sha)) throw appError_('파일 지문 형식이 올바르지 않아요.');
+  var delegator = safe_(req.delegatorName, 20), delegatee = safe_(req.delegateeName, 20);
+  var duplicate = false;
   withLock_(function () {
-    sheet_(SHEET_LOG).appendRow([new Date(), user.id, user.name, name, sha]);
+    var sh = sheet_(SHEET_LOG), last = sh.getLastRow(), now = Date.now();
+    if (last >= 2) {   // 최근 30줄에서 같은 직원·같은 파일이 10분 안에 기록됐는지
+      var from = Math.max(2, last - 29);
+      var recent = sh.getRange(from, 1, last - from + 1, LOG_HEADERS.length).getValues();
+      duplicate = recent.some(function (r) {
+        var at = r[0] instanceof Date ? r[0].getTime() : Date.parse(r[0]);
+        return String(r[1]) === user.id && String(r[4]) === sha && now - at < DUP_WINDOW_MS;
+      });
+    }
+    if (!duplicate) sh.appendRow([new Date(), user.id, user.name, name, sha, delegator, delegatee]);
   });
-  return {};
+  return { duplicate: duplicate };
 }
 
 function myLogs_(req) {
@@ -197,7 +210,8 @@ function readLogs_(filter, limit) {
   var out = [];
   for (var i = rows.length - 1; i >= 0 && out.length < limit; i--) {
     var r = rows[i];
-    var item = { at: toIso_(r[0]), id: String(r[1]), writer: String(r[2]), doc: String(r[3]), sha256: String(r[4]) };
+    var item = { at: toIso_(r[0]), id: String(r[1]), writer: String(r[2]), doc: String(r[3]), sha256: String(r[4]),
+                 delegator: String(r[5] || ''), delegatee: String(r[6] || '') };
     if (!filter || filter(item)) out.push(item);
   }
   return out;
@@ -288,6 +302,11 @@ function ensureSheet_(ss, name, headers) {
     sh.appendRow(headers);
     sh.setFrozenRows(1);
     sh.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  } else {   // 예전 시트에 새로 생긴 제목 칸만 채움(기존 기록은 그대로)
+    var cur = sh.getRange(1, 1, 1, headers.length).getValues()[0];
+    for (var i = 0; i < headers.length; i++) {
+      if (!cur[i]) sh.getRange(1, i + 1).setValue(headers[i]).setFontWeight('bold');
+    }
   }
   return sh;
 }
