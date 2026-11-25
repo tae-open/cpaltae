@@ -212,7 +212,7 @@
       return '<button type="button" class="btn sm dl" data-download="' + b + '"' + (miss.length ? ' disabled' : '') + '>' + esc(sp.bundles[b].label) + '</button>' +
         (miss.length ? '<p class="miss-note">' + esc(miss.join(', ')) + '이(가) 없어 내려받을 수 없어요. 정보수정에서 올려 주세요.</p>' : '');
     }).join('');
-    var faxTo = '';
+    var faxTo = '', target = faxTarget();
     if (state.tab === 'nps') {
       var n = state.nps;
       faxTo = !n ? '<p class="fax-to bad">위임자 주소가 없어 관할지사를 찾지 못했어요. 정보수정에서 주소를 입력해 주세요.</p>'
@@ -222,7 +222,12 @@
       var c = TaeNps.comwel();
       faxTo = '<p class="fax-to ok">팩스 받는 곳 <b>' + esc(c.name) + '</b><br>' + esc(c.fax) + '</p>';
     }
-    var fax = tab.fax_label ? '<button type="button" class="btn sm ghost-btn" disabled title="팩스 연동은 하나팩스 규격을 받은 뒤 연결해요">' + esc(tab.fax_label) + ' (준비 중)</button>' : '';
+    var fax = '';
+    if (tab.fax_label) {
+      var fmiss = res.bundles[tab.fax].missing, why = fmiss.length ? fmiss.join(', ') + '이(가) 없어 보낼 수 없어요.' : !target ? '확인된 팩스번호가 없어 보낼 수 없어요.' : '';
+      fax = '<button type="button" class="btn sm fax-btn" data-fax="' + tab.fax + '"' + (why ? ' disabled' : '') + '>' + esc(tab.fax_label) + '</button>' +
+        (why ? '<p class="miss-note">' + esc(why) + '</p>' : '') + '<div id="faxBox"></div>';
+    }
     $('caseSide').innerHTML =
       (tab.submit ? '<p class="submit-to">제출처 <b>' + esc(tab.submit) + (state.tab === 'nps' && state.nps && state.nps.branch ? ' (' + esc(state.nps.branch) + ')' : '') + '</b></p>' : '') + faxTo +
       '<h3>들어가는 서류</h3><ul class="doc-list">' + docs + '</ul>' +
@@ -230,6 +235,75 @@
       '<div class="dl-buttons">' + buttons + fax + '</div>';
     drawPreview(res.bundles[state.view]);
   }
+  // ===== 팩스 보내기: 버튼 → 확인 화면 → 최종 확인 → 전송 → 진행 상태 =====
+  function faxTarget(){   // 공식 확인된 번호만(직접 입력 없음)
+    if (state.tab === 'nps' && state.nps && state.nps.status === 'found') return { name: state.nps.branch + ' ' + state.nps.department, number: state.nps.fax };
+    if (state.tab === 'comwel' && TaeNps.comwel()) return { name: TaeNps.comwel().name, number: TaeNps.comwel().fax };
+    return null;
+  }
+  var faxInfo = null;
+  async function getFaxInfo(){
+    try { faxInfo = await TAEUI.api('fax.info'); } catch(e) { faxInfo = { mode: 'unknown', error: e.message }; }
+    return faxInfo;
+  }
+  function b64(bytes){
+    var s = '';
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  async function openFaxConfirm(key){
+    var sp = specs(), bundle = state.result.bundles[key], t = faxTarget(), box = $('faxBox');
+    if (!t || bundle.missing.length) return;
+    box.innerHTML = '<div class="fax-confirm"><p class="muted">팩스 서버 상태를 확인하는 중…</p></div>';
+    var info = await getFaxInfo();
+    var mode = info.mode === 'relay' ? (info.relayAlive ? '<p class="fax-mode live">실제로 팩스를 보냅니다(하나팩스).</p>'
+        : '<p class="fax-mode warn">실제 전송 모드지만 팩스 중계 서버가 3분 넘게 응답하지 않아요. 보내면 대기열에 남았다가 서버가 다시 연결되면 전송돼요.</p>')
+      : info.mode === 'test' ? '<p class="fax-mode test">테스트 모드 — 절차만 진행하고 실제 팩스는 보내지 않아요.</p>'
+      : '<p class="fax-mode warn">' + esc(info.error || '팩스 서버 상태를 확인하지 못했어요.') + '</p>';
+    box.innerHTML = '<div class="fax-confirm" role="dialog" aria-label="팩스 전송 확인"><h3>팩스 전송 확인</h3>' + mode +
+      '<dl><dt>받는 곳</dt><dd>' + esc(t.name) + '</dd><dt>팩스번호</dt><dd><b>' + esc(t.number) + '</b></dd>' +
+      '<dt>서류</dt><dd>' + esc(sp.bundles[key].name) + '</dd><dt>쪽수</dt><dd>' + bundle.captions.length + '쪽 (' + esc(bundle.captions.join(', ')) + ')</dd></dl>' +
+      '<p class="muted">받는 곳과 번호, 서류가 맞는지 확인한 뒤 보내 주세요. 같은 서류를 같은 번호로 두 번 보낼 수 없어요.</p>' +
+      '<div class="fax-actions"><button type="button" class="btn sm" data-fax-send="' + key + '">최종 확인 · 전송</button> <button type="button" class="ghost" data-fax-cancel>취소</button></div></div>';
+  }
+  async function sendFax(key, btn){
+    var sp = specs(), bundle = state.result.bundles[key], t = faxTarget();
+    btn.disabled = true; btn.textContent = '보내는 중…';
+    try {
+      var sha = await TaeForms.sha256Hex(bundle.bytes);
+      var r = await TAEUI.api('fax.send', { workspace: 'insurance', bundleKey: key, recipientName: t.name, number: t.number,
+        pages: bundle.captions.length, sha256: sha, pdfBase64: b64(bundle.bytes),
+        delegatorName: state.input.delegator.name, delegateeName: state.input.delegatee.name });
+      state.faxJobs = state.faxJobs || {}; state.faxJobs[key] = r.job;
+      showFaxJob(key, { job: r.job, status: r.status, to: t.name, number: t.number, pages: bundle.captions.length, result: r.mode === 'test' ? '테스트 모드 — 실제 팩스는 보내지 않았어요' : '' });
+      if (r.status !== '테스트 완료') pollFax(key, r.job, 0);
+    } catch(err) {
+      $('faxBox').innerHTML = '<div class="fax-confirm bad"><p>' + esc(err.message) + '</p></div>';
+    }
+  }
+  function showFaxJob(key, j){
+    var done = ['성공', '실패', '테스트 완료'].indexOf(j.status) >= 0;
+    var box = $('faxBox'); if (!box) return;
+    box.innerHTML = '<div class="fax-confirm ' + (j.status === '실패' ? 'bad' : j.status === '성공' ? 'ok' : '') + '"><h3>팩스 ' + esc(j.status) + '</h3>' +
+      '<p>' + esc(j.to || '') + ' ' + esc(j.number || '') + ' · ' + (j.pages || '') + '쪽</p>' + (j.result ? '<p class="muted">' + esc(j.result) + '</p>' : '') +
+      (done ? '' : '<p class="muted">진행 상황을 자동으로 확인하고 있어요. 이 화면을 벗어나도 전송은 계속되고, 결과는 발급 기록에서 볼 수 있어요.</p>') + '</div>';
+  }
+  async function pollFax(key, job, n){
+    if (n > 120 || !state.result || !state.faxJobs || state.faxJobs[key] !== job) return;   // 최대 약 10분
+    await new Promise(function(r){ setTimeout(r, 5000); });
+    try {
+      var r = await TAEUI.api('fax.status', { jobs: [job] }), j = r.jobs[0];
+      if (j && state.tab && specs().tabs[state.tab].fax === key) showFaxJob(key, j);
+      if (j && ['성공', '실패', '테스트 완료'].indexOf(j.status) >= 0) return;
+    } catch(e) {}
+    pollFax(key, job, n + 1);
+  }
+  $('caseSide').addEventListener('click', function(e){
+    var f = e.target.closest('[data-fax]'); if (f && !f.disabled) { openFaxConfirm(f.dataset.fax); return; }
+    var s = e.target.closest('[data-fax-send]'); if (s && !s.disabled) { sendFax(s.dataset.faxSend, s); return; }
+    if (e.target.closest('[data-fax-cancel]')) $('faxBox').innerHTML = '';
+  });
+
   $('agencyTabs').addEventListener('click', function(e){ var b = e.target.closest('[data-agency]'); if (b) { state.tab = b.dataset.agency; state.view = null; drawCase(); } });
   $('viewSwitch').addEventListener('click', function(e){ var b = e.target.closest('[data-view-bundle]'); if (b) { state.view = b.dataset.viewBundle; drawCase(); } });
 

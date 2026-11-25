@@ -3,14 +3,14 @@
   var $ = function(id){ return document.getElementById(id); };
   var api = TAEUI.api, esc = TAEUI.esc, when = TAEUI.fmtDateTime;
   var me = null, current = 'home';
-  var NEED_SERVER = '20261125';   // 이 화면이 기대하는 서버(Code.gs) 버전 이상
+  var NEED_SERVER = '20261126';   // 이 화면이 기대하는 서버(Code.gs) 버전 이상
 
   // ===== 화면 주소(#…) — 새로 고침하거나 주소로 바로 들어와도 같은 화면 =====
   var ROUTES = {
     home: { view: 'home', title: '홈' },
-    'my-records': { view: 'mylogs', title: '내 발급 기록' },
+    records: { view: 'records', title: '발급 기록' },
     accounts: { view: 'users', title: '직원 계정 관리', admin: true },
-    'all-records': { view: 'alllogs', title: '전체 발급 기록', admin: true }
+    'my-records': { alias: 'records' }, 'all-records': { alias: 'records' }   // 예전 주소
   };
   TaeWorkspaces.list.forEach(function(w){ ROUTES[w.route] = { view: w.ready ? w.view : 'preparing', title: w.title, ws: w }; });
   // 상단 업무 메뉴: '홈' 다음에 업무 목록 순서대로(업무를 추가하면 메뉴도 자동으로 생김)
@@ -116,6 +116,7 @@
 
   // ===== 화면 이동 =====
   function go(route){
+    if (ROUTES[route] && ROUTES[route].alias) route = ROUTES[route].alias;
     var r = ROUTES[route] || ROUTES.home;
     if (r.admin && (!me || me.role !== '관리자')) { route = 'home'; r = ROUTES.home; }
     current = route;
@@ -128,8 +129,7 @@
     if (r.view === 'home') TaeWorkspaces.renderHome($('wsGrid'), function(w){ return w === 'insurance' && TAEUI.issueHasData && TAEUI.issueHasData(); });
     if (r.view === 'preparing') TaeWorkspaces.renderPreparing($('preparingBox'), r.ws);
     if (r.view === 'write' && TAEUI.issueHome) TAEUI.issueHome();   // 들어올 때마다 위임자·수임자 입력 화면(입력값은 유지)
-    if (r.view === 'mylogs') loadLogs('mylogs');
-    if (r.view === 'alllogs') loadLogs('alllogs');
+    if (r.view === 'records') TaeRecords.open(me);
     if (r.view === 'users') loadUsers();
     window.scrollTo(0, 0);
   }
@@ -140,25 +140,10 @@
     if (a && a.getAttribute('href') === location.hash) { e.preventDefault(); go(location.hash.slice(1)); }
   });
   document.querySelectorAll('[data-reload]').forEach(function(b){ b.addEventListener('click', function(){
-    var k = b.dataset.reload; if (k === 'users') loadUsers(); else loadLogs(k);
+    if (b.dataset.reload === 'users') loadUsers();
   }); });
 
   function rowMsg(body, cols, text){ $(body).innerHTML = '<tr><td class="none" colspan="' + cols + '">' + esc(text) + '</td></tr>'; }
-
-  // ===== 이력 =====
-  async function loadLogs(kind){
-    var body = kind + 'Body', cols = 5;
-    rowMsg(body, cols, '불러오는 중…');
-    try {
-      var r = await api(kind === 'mylogs' ? 'myLogs' : 'admin.listLogs');
-      if (!r.logs.length) { rowMsg(body, cols, '아직 발급 기록이 없어요. 4대보험 청구에서 PDF를 내려받으면 여기에 기록돼요.'); return; }
-      $(body).innerHTML = r.logs.map(function(l){
-        var blank = '<span class="muted">—</span>';   // 이름 칸이 생기기 전의 기록
-        return '<tr><td>' + esc(when(l.at)) + '</td><td>' + (l.delegator ? esc(l.delegator) : blank) + '</td><td>' + (l.delegatee ? esc(l.delegatee) : blank) +
-          '</td><td class="wrapcell" title="파일 지문 ' + esc(l.sha256) + '">' + esc(l.doc) + '</td><td>' + esc(l.writer) + ' <span class="muted">' + esc(l.id) + '</span></td></tr>';
-      }).join('');
-    } catch(err) { rowMsg(body, cols, err.message); }
-  }
 
   // ===== 계정 관리 =====
   var users = [];
