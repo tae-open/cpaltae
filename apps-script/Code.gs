@@ -9,6 +9,8 @@
  * 실행 로그에 표시됩니다. 그다음 [배포 > 새 배포 > 웹 앱]으로 배포하고 URL을 config.js에 넣으세요.
  */
 
+// 서버 코드 버전 — 화면이 이 값을 보고 '예전 서버' 안내를 띄움. Code.gs 를 바꿀 때마다 올림
+var SERVER_VERSION = '20261125';
 var SHEET_USERS = '계정';
 var SHEET_LOG = '발급기록';
 var USER_HEADERS = ['아이디', '이름', '역할', '상태', '솔트', '비밀번호해시', '비밀번호변경필요', '생성일', '마지막로그인'];
@@ -32,7 +34,7 @@ var HASH_ROUNDS = 300;
 // ===================== 진입점 =====================
 
 function doGet() {
-  return json_({ ok: true, service: 'taeui-4insurance', time: new Date().toISOString() });
+  return json_({ ok: true, service: 'taeui-4insurance', serverVersion: SERVER_VERSION, time: new Date().toISOString() });
 }
 
 function doPost(e) {
@@ -360,7 +362,8 @@ function updateUserField_(id, col, value) {
 }
 
 function publicUser_(u) {
-  return { id: u.id, name: u.name, role: u.role, status: u.status, mustChange: u.mustChange, created: toIso_(u.created), lastLogin: toIso_(u.lastLogin) };
+  return { id: u.id, name: u.name, role: u.role, status: u.status, mustChange: u.mustChange, created: toIso_(u.created), lastLogin: toIso_(u.lastLogin),
+           serverVersion: SERVER_VERSION };
 }
 
 // ===================== 기타 도우미 =====================

@@ -251,3 +251,20 @@ input.auto{background:var(--ok-bg);border-bottom-color:var(--focus)}
 @media (max-width:640px){.home-hero h1{font-size:20px}.ws-grid{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){.ws-card{transition:none}.ws-card:hover{transform:none}}
 .topbar .who b,.topbar .who .who-name{color:var(--nav-ink)}
+
+/* 관할 국민연금공단 안내 */
+.nps-hint{margin:4px 0 0;font-size:12px;line-height:1.5;min-height:1.5em;color:var(--muted)}
+.nps-hint.ok{color:var(--ok)}.nps-hint.warn{color:var(--warn)}.nps-hint.bad{color:var(--stamp)}
+.fax-to{margin:-6px 0 14px;padding:10px 12px;border-radius:6px;font-size:13px;line-height:1.55;border:1px solid var(--line)}
+.fax-to.ok{border-color:var(--ok)}
+.fax-to.bad{border-color:var(--stamp);color:var(--stamp)}
+.fax-to a{color:inherit}
+.topbar .brand{display:inline-flex;align-items:center;gap:10px}
+.brand-logo{display:block;height:32px;width:auto}
+.server-notice{margin:0 0 16px}
+@media (max-width:640px){.brand-logo{height:26px}}
+/* 상단 바: 업무 메뉴가 늘어나 PC 화면에서는 한 줄, 좁은 화면에서는 메뉴만 둘째 줄로 */
+.topbar-in{max-width:none;flex-wrap:nowrap}
+.topbar .tabs{flex:1 1 auto;min-width:0}
+.topbar .tab{padding:8px 8px}
+@media (max-width:1240px){.topbar-in{flex-wrap:wrap}.topbar .tabs{order:3;flex-basis:100%}.topbar .who{margin-left:auto}}

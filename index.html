@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="app-version" content="20261124-1">
+<meta name="app-version" content="20261125-2">
 <title>노무법인 태(泰) 통합 업무시스템</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261124-1">
+<link rel="stylesheet" href="assets/style.css?v=20261125-2">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
-<script src="config.js?v=20261124-1" charset="utf-8"></script>
-<script src="assets/common.js?v=20261124-1" charset="utf-8"></script>
+<script src="config.js?v=20261125-2" charset="utf-8"></script>
+<script src="assets/common.js?v=20261125-2" charset="utf-8"></script>
 </head>
 <body>
 
@@ -50,10 +50,11 @@
 <div id="viewApp" hidden>
   <header class="topbar">
     <div class="topbar-in">
-      <a class="brand" href="#home" title="통합 업무시스템 메인 화면으로">노무법인 태(泰) <span>통합 업무시스템</span></a>
+      <a class="brand" href="#home" title="통합 업무시스템 메인 화면으로"><img class="brand-logo" src="assets/logo-white.png" alt="노무법인 태(泰)" data-office-alt> <span>통합 업무시스템</span></a>
       <nav class="tabs" aria-label="업무 메뉴">
-        <a class="tab" href="#home" data-route="home">메인 화면</a>
-        <a class="tab" href="#insurance" data-route="insurance">4대보험 청구</a>
+        <a class="tab" href="#home" data-route="home">홈</a>
+        <!-- 업무 메뉴(4대보험 청구 · 평균임금 · 난청 · 근골격계 · 진폐)는 assets/workspaces.js 목록으로 자동 생성 -->
+        <span class="ws-nav" id="wsNav"></span>
         <a class="tab" href="#my-records" data-route="my-records">내 발급 기록</a>
         <span class="nav-sep admin-only" aria-hidden="true" hidden></span>
         <a class="tab admin-only" href="#accounts" data-route="accounts" hidden>직원 계정 관리</a>
@@ -68,6 +69,7 @@
   </header>
 
   <main class="wrap">
+    <div class="status bad server-notice" id="serverNotice" role="alert" hidden></div>
     <!-- 통합 업무시스템 메인 화면 -->
     <section data-view="home" hidden>
       <div class="home-hero">
@@ -99,7 +101,8 @@
               <div class="field"><label for="dgPhone">위임자 휴대폰 번호</label><input id="dgPhone" type="tel" inputmode="numeric" maxlength="20" placeholder="010-0000-0000"></div>
               <div class="field"><label for="dgRrn">위임자 주민등록번호</label>
                 <input id="dgRrn" type="text" inputmode="numeric" maxlength="14" placeholder="000000-0000000" autocomplete="off" spellcheck="false"></div>
-              <div class="field wide"><label for="dgAddr">위임자 주소</label><input id="dgAddr" type="text" maxlength="120" placeholder="도로명 주소와 상세 주소"></div>
+              <div class="field wide"><label for="dgAddr">위임자 주소</label><input id="dgAddr" type="text" maxlength="120" placeholder="도로명 주소와 상세 주소 (예: 서울특별시 종로구 세종대로 209)">
+                <p class="nps-hint" id="npsHint" aria-live="polite"></p></div>
             </div>
             <div class="dropzone" data-role="delegator" tabindex="0" role="button" aria-label="위임자 신분증 올리기"></div>
           </div>
@@ -199,12 +202,13 @@
   </main>
 </div>
 
-<p class="app-version" id="appVersion">버전 20261124-1</p>
+<p class="app-version" id="appVersion">버전 20261125-2</p>
 
-<script src="assets/workspaces.js?v=20261124-1" charset="utf-8"></script>
-<script src="assets/forms.js?v=20261124-1" charset="utf-8"></script>
-<script src="assets/ocr.js?v=20261124-1" charset="utf-8"></script>
-<script src="assets/issue.js?v=20261124-1" charset="utf-8"></script>
-<script src="assets/app.js?v=20261124-1" charset="utf-8"></script>
+<script src="assets/workspaces.js?v=20261125-2" charset="utf-8"></script>
+<script src="assets/forms.js?v=20261125-2" charset="utf-8"></script>
+<script src="assets/nps.js?v=20261125-2" charset="utf-8"></script>
+<script src="assets/ocr.js?v=20261125-2" charset="utf-8"></script>
+<script src="assets/issue.js?v=20261125-2" charset="utf-8"></script>
+<script src="assets/app.js?v=20261125-2" charset="utf-8"></script>
 </body>
 </html>

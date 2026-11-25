@@ -3,15 +3,20 @@
   var $ = function(id){ return document.getElementById(id); };
   var api = TAEUI.api, esc = TAEUI.esc, when = TAEUI.fmtDateTime;
   var me = null, current = 'home';
+  var NEED_SERVER = '20261125';   // 이 화면이 기대하는 서버(Code.gs) 버전 이상
 
   // ===== 화면 주소(#…) — 새로 고침하거나 주소로 바로 들어와도 같은 화면 =====
   var ROUTES = {
-    home: { view: 'home', title: '메인 화면' },
+    home: { view: 'home', title: '홈' },
     'my-records': { view: 'mylogs', title: '내 발급 기록' },
     accounts: { view: 'users', title: '직원 계정 관리', admin: true },
     'all-records': { view: 'alllogs', title: '전체 발급 기록', admin: true }
   };
   TaeWorkspaces.list.forEach(function(w){ ROUTES[w.route] = { view: w.ready ? w.view : 'preparing', title: w.title, ws: w }; });
+  // 상단 업무 메뉴: '홈' 다음에 업무 목록 순서대로(업무를 추가하면 메뉴도 자동으로 생김)
+  $('wsNav').outerHTML = TaeWorkspaces.list.map(function(w){
+    return '<a class="tab" href="#' + w.route + '" data-route="' + w.route + '">' + esc(w.nav || w.title) + '</a>';
+  }).join('');
   function routeFromHash(){
     var h = decodeURIComponent((location.hash || '').replace(/^#/, ''));
     return ROUTES[h] ? h : 'home';
@@ -61,6 +66,12 @@
     $('homeHello').textContent = user.name + '님(' + user.role + '), 처리할 업무를 선택해 주세요.';
     $('chgPw').hidden = user.role !== '관리자';   // 직원(공용) 계정은 관리자만 비밀번호를 바꿈
     document.querySelectorAll('.admin-only').forEach(function(n){ n.hidden = user.role !== '관리자'; });
+    // 서버(Apps Script)가 화면보다 예전 버전이면 안내 — 예: 발급 기록에 위임자·수임자 이름이 안 남는 경우
+    var old = !user.serverVersion || user.serverVersion < NEED_SERVER;
+    $('serverNotice').hidden = !old;
+    $('serverNotice').innerHTML = old ? (user.role === '관리자'
+      ? '<strong>서버 프로그램(Apps Script)이 예전 버전이에요.</strong>이대로는 발급 기록에 위임자·수임자 이름이 남지 않아요. 구글 시트 → 확장 프로그램 → Apps Script에서 새 Code.gs로 바꾸고 <b>배포 → 배포 관리 → 연필 → 버전: 새 버전 → 배포</b>를 눌러 주세요.'
+      : '<strong>서버 프로그램이 예전 버전이에요.</strong>발급 기록에 위임자·수임자 이름이 남지 않을 수 있어요. 관리자에게 서버 업데이트를 요청해 주세요.') : '';
     show('viewApp');
     go(routeFromHash());   // 로그인하면 통합 업무시스템 메인 화면(주소에 다른 화면이 있으면 그 화면)
   }

@@ -5,7 +5,7 @@
   var esc = TAEUI.esc;
   var TTL_MS = 30 * 60 * 1000;
   var ROLES = { delegator: '위임자 신분증', delegatee: '수임자 신분증' };
-  var state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null, logged: {} };
+  var state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null, logged: {}, nps: null };
 
   // ===== 입력 도우미 =====
   function today(){
@@ -80,6 +80,7 @@
         var res = fillAuto(f[1], r[f[0]]);
         (res === 'filled' ? filled : res === 'kept' ? kept : missed).push(f[2]);
       });
+      if (role === 'delegator') checkNps();
       var msgs = [];
       if (filled.length) msgs.push('신분증에서 읽어 채웠어요: ' + filled.join(', ') + '. 틀린 글자가 없는지 꼭 확인해 주세요.');
       if (kept.length) msgs.push('이미 입력한 값은 그대로 두었어요: ' + kept.join(', ') + '.');
@@ -89,6 +90,25 @@
       status('신분증 글자를 읽지 못했어요. 직접 입력해 주세요. (' + e.message + ')', true);
     }
   }
+  // ===== 위임자 주소 → 관할 국민연금공단 지사·팩스 (assets/nps.js, 이 브라우저 안에서만) =====
+  var npsTimer = null;
+  function npsText(r){
+    if (r.status === 'found') return '관할 국민연금공단: ' + r.branch + ' · ' + r.department + ' 팩스 ' + r.fax + ' (확인 ' + r.verified_on + ')';
+    if (r.status === 'branch_only') return '관할 국민연금공단: ' + r.branch + ' — 가입지원부 팩스번호가 등록되어 있지 않아요.';
+    return r.message;
+  }
+  async function checkNps(){
+    var el = $('npsHint'), addr = $('dgAddr').value.trim();
+    if (!addr) { el.textContent = ''; el.className = 'nps-hint'; return null; }
+    try {
+      await TaeNps.load();
+      var r = TaeNps.lookup(addr);
+      el.textContent = npsText(r);
+      el.className = 'nps-hint ' + (r.status === 'found' ? 'ok' : r.status === 'branch_only' ? 'warn' : 'bad');
+      return r;
+    } catch(e) { el.textContent = e.message; el.className = 'nps-hint bad'; return null; }
+  }
+  $('dgAddr').addEventListener('input', function(){ clearTimeout(npsTimer); npsTimer = setTimeout(checkNps, 300); });
   ['dgName','dgRrn','dgAddr','deName','deRrn'].forEach(function(id){
     $(id).addEventListener('input', function(){ if (this.value !== this.dataset.auto) this.classList.remove('auto'); });
   });
@@ -139,6 +159,7 @@
       var result = await TaeForms.buildAll({ date: input.date, delegator: input.delegator, delegatee: input.delegatee, images: state.images });
       touch();
       state.result = result; state.input = input; state.tab = 'nps'; state.view = null;
+      state.nps = input.delegator.address ? await checkNps() : null;
       showCase();
     } catch(err) {
       msg('issueMsg', err.name === 'GenerationError' ? err.message : '서류를 만들지 못했어요. 페이지를 새로 고친 뒤 다시 시도해 주세요. (' + err.message + ')');
@@ -191,9 +212,19 @@
       return '<button type="button" class="btn sm dl" data-download="' + b + '"' + (miss.length ? ' disabled' : '') + '>' + esc(sp.bundles[b].label) + '</button>' +
         (miss.length ? '<p class="miss-note">' + esc(miss.join(', ')) + '이(가) 없어 내려받을 수 없어요. 정보수정에서 올려 주세요.</p>' : '');
     }).join('');
+    var faxTo = '';
+    if (state.tab === 'nps') {
+      var n = state.nps;
+      faxTo = !n ? '<p class="fax-to bad">위임자 주소가 없어 관할지사를 찾지 못했어요. 정보수정에서 주소를 입력해 주세요.</p>'
+        : n.status === 'found' ? '<p class="fax-to ok">팩스 받는 곳 <b>' + esc(n.branch) + ' ' + esc(n.department) + '</b><br>' + esc(n.fax) + ' <span class="muted">(확인 ' + esc(n.verified_on) + ')</span></p>'
+        : '<p class="fax-to bad">' + esc(n.message) + ' <a href="' + esc(n.link) + '" target="_blank" rel="noopener">공단 지사찾기</a></p>';
+    } else if (state.tab === 'comwel' && TaeNps.comwel()) {
+      var c = TaeNps.comwel();
+      faxTo = '<p class="fax-to ok">팩스 받는 곳 <b>' + esc(c.name) + '</b><br>' + esc(c.fax) + '</p>';
+    }
     var fax = tab.fax_label ? '<button type="button" class="btn sm ghost-btn" disabled title="팩스 연동은 하나팩스 규격을 받은 뒤 연결해요">' + esc(tab.fax_label) + ' (준비 중)</button>' : '';
     $('caseSide').innerHTML =
-      (tab.submit ? '<p class="submit-to">제출처 <b>' + esc(tab.submit) + '</b></p>' : '') +
+      (tab.submit ? '<p class="submit-to">제출처 <b>' + esc(tab.submit) + (state.tab === 'nps' && state.nps && state.nps.branch ? ' (' + esc(state.nps.branch) + ')' : '') + '</b></p>' : '') + faxTo +
       '<h3>들어가는 서류</h3><ul class="doc-list">' + docs + '</ul>' +
       '<h3>신분증</h3><ul class="doc-list">' + imgs + '</ul>' +
       '<div class="dl-buttons">' + buttons + fax + '</div>';
@@ -247,7 +278,8 @@
   // ===== 30분 보관 · 지우기 =====
   function clearAll(){
     Object.keys(state.images).forEach(function(r){ URL.revokeObjectURL(state.images[r].url); });
-    state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null, logged: {} };
+    state = { images: {}, bornAt: 0, result: null, input: null, tab: 'nps', view: null, logged: {}, nps: null };
+    $('npsHint').textContent = ''; $('npsHint').className = 'nps-hint';
     $('issueForm').reset(); $('issueDate').value = today();
     document.querySelectorAll('.dropzone').forEach(function(z){ drawZone(z.dataset.role); });
     $('previewPages').innerHTML = ''; $('caseSide').innerHTML = '';
