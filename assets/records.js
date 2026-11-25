@@ -4,7 +4,7 @@
   var $ = function(id){ return document.getElementById(id); };
   var esc = TAEUI.esc, when = TAEUI.fmtDateTime;
   var PAGE = 50;
-  var me = null, rows = [], next = null, lastQuery = null, wsFilled = false;
+  var me = null, rows = [], next = null, lastQuery = null, wsFilled = false, seq = 0;
 
   function kst(d){ return new Date(d.getTime() + 9 * 3600 * 1000); }
   function ymd(d){ return d.toISOString().slice(0, 10); }
@@ -21,19 +21,32 @@
   }
   function query(){
     var r = range($('recPeriod').value);
-    return { from: r[0], to: r[1], workspace: $('recWs').value, method: $('recMethod').value,
+    return { from: r[0], to: r[1], workspace: $('recWs').value,
              account: $('recAccount').value, q: $('recQ').value.trim() };
   }
 
-  function methodCell(it){
-    if (it.method !== '팩스') return '<span class="pill off">다운로드</span>';
-    var st = it.faxStatus || '확인 중', cls = st === '성공' ? 'on' : st === '실패' ? 'bad' : st === '테스트 완료' ? 'test' : 'wait';
-    return '<span class="pill ' + cls + '">팩스 · ' + esc(st) + '</span>' + (it.to ? '<span class="rec-to">' + esc(it.to) + '</span>' : '') +
-      (it.faxResult && st !== '성공' ? '<span class="rec-to">' + esc(it.faxResult) + '</span>' : '');
+  function fmtFax(d){   // 05050553100 → 0505-055-3100, 0234852702 → 02-3485-2702, 07079665797 → 070-7966-5797
+    d = String(d);
+    var a = /^02/.test(d) ? 2 : /^050\d/.test(d) ? 4 : 3;
+    if (d.length < a + 7) return d;
+    return d.slice(0, a) + '-' + d.slice(a, d.length - 4) + '-' + d.slice(-4);
+  }
+  function faxWord(st){ return st === '성공' ? '완료' : st; }   // 성공 → 완료, 실패, 테스트 완료, 전송 중…
+  function downloadCell(g){
+    return g.downloads ? '<span class="rec-done">완료</span>' : '<span class="muted">—</span>';
+  }
+  function faxCell(g){   // 보낸 곳마다: 이름 번호 / 완료·실패
+    if (!g.faxes.length) return '<span class="muted">—</span>';
+    return g.faxes.map(function(f){
+      var st = faxWord(f.status), cls = st === '완료' ? 'on' : st === '실패' ? 'bad' : st === '테스트 완료' ? 'test' : 'wait';
+      var to = (f.to || '').replace(/(\d{9,12})$/, function(d){ return fmtFax(d); });
+      return '<div class="rec-fax" title="' + esc(f.result || '') + '"><span class="rec-fax-to">' + esc(to) + '</span>' +
+        '<span class="pill ' + cls + '">' + esc(st) + '</span>' + (st === '실패' && f.result ? '<span class="rec-to">' + esc(f.result) + '</span>' : '') + '</div>';
+    }).join('');
   }
   function draw(){
     var body = $('recBody');
-    if (!rows.length) { body.innerHTML = '<tr><td class="none" colspan="7">조건에 맞는 발급 기록이 없어요. 기간을 넓히거나 검색어를 바꿔 보세요.</td></tr>'; return; }
+    if (!rows.length) { body.innerHTML = '<tr><td class="none" colspan="8">조건에 맞는 발급 기록이 없어요. 기간을 넓히거나 검색어를 바꿔 보세요.</td></tr>'; return; }
     var html = '', month = '', perMonth = {};
     rows.forEach(function(it){ var k = when(it.at).slice(0, 7); perMonth[k] = (perMonth[k] || 0) + 1; });
     var blank = '<span class="muted">—</span>';
@@ -41,27 +54,29 @@
       var k = when(it.at).slice(0, 7);
       if (k !== month) {
         month = k;
-        html += '<tr class="rec-month"><th colspan="7">' + k.slice(0, 4) + '년 ' + Number(k.slice(5)) + '월 <span>' + perMonth[k] + '건' + (next !== null && k === when(rows[rows.length - 1].at).slice(0, 7) ? ' 이상' : '') + '</span></th></tr>';
+        html += '<tr class="rec-month"><th colspan="8">' + k.slice(0, 4) + '년 ' + Number(k.slice(5)) + '월 <span>' + perMonth[k] + '건' + (next !== null && k === when(rows[rows.length - 1].at).slice(0, 7) ? ' 이상' : '') + '</span></th></tr>';
       }
       html += '<tr><td>' + esc(when(it.at).slice(5)) + '</td><td>' + esc(it.workspace) + '</td><td class="wrapcell" title="파일 지문 ' + esc(it.sha256) + '">' + esc(it.doc) +
         '</td><td>' + (it.delegator ? esc(it.delegator) : blank) + '</td><td>' + (it.delegatee ? esc(it.delegatee) : blank) +
-        '</td><td class="wrapcell">' + methodCell(it) + '</td><td>' + esc(it.writer) + ' <span class="muted">' + esc(it.id) + '</span></td></tr>';
+        '</td><td>' + downloadCell(it) + '</td><td class="wrapcell">' + faxCell(it) + '</td><td>' + esc(it.writer) + ' <span class="muted">' + esc(it.id) + '</span></td></tr>';
     });
     body.innerHTML = html;
   }
   function summary(r){
     var parts = Object.keys(r.byWorkspace || {}).map(function(k){ return k + ' ' + r.byWorkspace[k]; });
-    $('recSummary').textContent = '총 ' + r.total + '건 · 다운로드 ' + r.counts.download + ' · 팩스 ' + r.counts.fax +
+    $('recSummary').textContent = '총 ' + r.total + '건 · PDF 다운로드 ' + r.counts.download + ' · 팩스 ' + r.counts.fax +
       (parts.length > 1 ? ' (' + parts.join(', ') + ')' : '') + (r.total > rows.length ? ' · ' + rows.length + '건 표시 중' : '');
   }
   async function load(more){
     var q = more ? lastQuery : query();
     if (q.from && q.to && q.from > q.to) { $('recSummary').textContent = '시작일이 종료일보다 늦어요. 기간을 확인해 주세요.'; return; }
     lastQuery = q;
-    if (!more) { rows = []; $('recBody').innerHTML = '<tr><td class="none" colspan="7">불러오는 중…</td></tr>'; }
+    var my = ++seq;   // 조건을 빨리 바꿔도 마지막으로 요청한 결과만 보여 줌
+    if (!more) { rows = []; $('recBody').innerHTML = '<tr><td class="none" colspan="8">불러오는 중…</td></tr>'; }
     $('recMore').disabled = true;
     try {
       var r = await TAEUI.api('records.search', Object.assign({ offset: more ? rows.length : 0, limit: PAGE }, q));
+      if (my !== seq) return;
       rows = rows.concat(r.rows); next = r.nextOffset;
       if (r.accounts && $('recAccount').options.length === 1) {
         r.accounts.forEach(function(a){ var o = document.createElement('option'); o.value = a.id; o.textContent = a.name + ' (' + a.id + ')'; $('recAccount').appendChild(o); });
@@ -70,7 +85,8 @@
       $('recMore').hidden = next === null;
       $('recMore').textContent = '더 보기 (남은 ' + (r.total - rows.length) + '건)';
     } catch(err) {
-      $('recBody').innerHTML = '<tr><td class="none" colspan="7">' + esc(err.message) + '</td></tr>';
+      if (my !== seq) return;
+      $('recBody').innerHTML = '<tr><td class="none" colspan="8">' + esc(err.message) + '</td></tr>';
     } finally { $('recMore').disabled = false; }
   }
 
@@ -79,8 +95,12 @@
     try {
       var r = await TAEUI.api('records.search', Object.assign({ export: true }, lastQuery || query()));
       var cell = function(v){ v = String(v == null ? '' : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
-      var lines = [['발급 일시', '업무', '서류', '위임자', '수임자', '방식', '팩스 상태', '받는 곳', '발급 계정', '아이디', '파일 지문']]
-        .concat(r.rows.map(function(it){ return [when(it.at), it.workspace, it.doc, it.delegator, it.delegatee, it.method, it.faxStatus || '', it.to, it.writer, it.id, it.sha256]; }));
+      var lines = [['발급 일시', '업무', '서류', '위임자', '수임자', 'PDF 다운로드', '팩스', '발급 계정', '아이디', '파일 지문']]
+        .concat(r.rows.map(function(g){
+          return [when(g.at), g.workspace, g.doc, g.delegator, g.delegatee, g.downloads ? '완료' : '',
+                  g.faxes.map(function(f){ return (f.to || '').replace(/(\d{9,12})$/, function(d){ return fmtFax(d); }) + ' ' + faxWord(f.status); }).join(' / '),
+                  g.writer, g.id, g.sha256];
+        }));
       var csv = '﻿' + lines.map(function(l){ return l.map(cell).join(','); }).join('\r\n');
       var url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
       var a = document.createElement('a'); a.href = url; a.download = '발급기록_' + when(new Date().toISOString()).slice(0, 10).replace(/\./g, '') + '.csv';
@@ -91,7 +111,7 @@
   }
 
   $('recPeriod').addEventListener('change', function(){ $('recDates').hidden = this.value !== 'custom'; if (this.value !== 'custom') load(false); });
-  ['recWs', 'recMethod', 'recAccount'].forEach(function(id){ $(id).addEventListener('change', function(){ load(false); }); });
+  ['recWs', 'recAccount'].forEach(function(id){ $(id).addEventListener('change', function(){ load(false); }); });
   $('recForm').addEventListener('submit', function(e){ e.preventDefault(); load(false); });
   $('recMore').addEventListener('click', function(){ load(true); });
   $('recExport').addEventListener('click', exportCsv);

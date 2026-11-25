@@ -15,7 +15,7 @@
  */
 
 // 서버 코드 버전 — 화면이 이 값을 보고 '예전 서버' 안내를 띄움. Code.gs 를 바꿀 때마다 올림
-var SERVER_VERSION = '20261126';
+var SERVER_VERSION = '20261129';
 var SHEET_USERS = '계정';
 var SHEET_LOG = '발급기록';
 var USER_HEADERS = ['아이디', '이름', '역할', '상태', '솔트', '비밀번호해시', '비밀번호변경필요', '생성일', '마지막로그인'];
@@ -261,11 +261,12 @@ function kstDate_(v) {
 }
 
 function recordsSearch_(req) {
+  // 같은 직원이 같은 서류 파일(파일 지문)로 한 다운로드·팩스는 한 줄로 묶음 → 발급 일시·업무·서류·위임자·수임자·PDF 다운로드·팩스·발급 계정
   var user = auth_(req);
   var admin = user.role === '관리자';
   var account = admin ? String(req.account || '') : user.id;    // 빈 값 = 전체(관리자만)
   var from = String(req.from || ''), to = String(req.to || '');
-  var ws = String(req.workspace || ''), method = String(req.method || '');
+  var ws = String(req.workspace || '');
   var q = String(req.q || '').replace(/\s+/g, '').slice(0, 30);
   var exportAll = !!req.export;
   var limit = exportAll ? 5000 : Math.min(100, Math.max(1, Number(req.limit) || 50));
@@ -273,23 +274,44 @@ function recordsSearch_(req) {
   var sh = sheet_(SHEET_LOG), n = sh.getLastRow() - 1;
   var rows = n > 0 ? sh.getRange(2, 1, n, LOG_HEADERS.length).getValues() : [];
   var faxes = faxMap_();
-  var matched = [], counts = { download: 0, fax: 0 }, byWs = {};
-  for (var i = rows.length - 1; i >= 0; i--) {
-    var it = logItem_(rows[i]), d = kstDate_(rows[i][L.at]);
+  var groups = {}, order = [];
+  for (var i = 0; i < rows.length; i++) {
+    var it = logItem_(rows[i]);
     if (account && it.id !== account) continue;
+    if (ws && it.workspace !== ws) continue;
+    var key = it.id + '|' + (it.sha256 || ('row' + i));
+    var g = groups[key];
+    if (!g) {
+      g = groups[key] = { at: it.at, last: it.at, id: it.id, writer: it.writer, workspace: it.workspace, doc: it.doc, sha256: it.sha256,
+                          delegator: it.delegator, delegatee: it.delegatee, downloads: 0, downloadAt: '', faxes: [] };
+      order.push(key);
+    }
+    if (it.at < g.at) g.at = it.at;
+    if (it.at > g.last) g.last = it.at;
+    if (!g.delegator && it.delegator) g.delegator = it.delegator;
+    if (!g.delegatee && it.delegatee) g.delegatee = it.delegatee;
+    if (it.method === '팩스') {
+      var f = faxes[it.job] || {};
+      g.faxes.push({ at: it.at, to: it.to, status: f.status || '확인 중', result: f.result || '', job: it.job });
+    } else {
+      g.downloads++; if (!g.downloadAt || it.at > g.downloadAt) g.downloadAt = it.at;
+    }
+  }
+  var list = [], counts = { download: 0, fax: 0 }, byWs = {};
+  for (var k = 0; k < order.length; k++) {
+    var gr = groups[order[k]], d = kstDate_(gr.at);
     if (from && d < from) continue;
     if (to && d > to) continue;
-    if (ws && it.workspace !== ws) continue;
-    if (method && it.method !== method) continue;
-    if (q && (it.delegator + it.delegatee + it.doc + it.writer + it.to).replace(/\s+/g, '').indexOf(q) < 0) continue;
-    if (it.method === '팩스' && it.job && faxes[it.job]) { it.faxStatus = faxes[it.job].status; it.faxResult = faxes[it.job].result; }
-    counts[it.method === '팩스' ? 'fax' : 'download']++;
-    byWs[it.workspace] = (byWs[it.workspace] || 0) + 1;
-    matched.push(it);
+    if (q && (gr.delegator + gr.delegatee + gr.doc + gr.writer + gr.faxes.map(function (x) { return x.to; }).join('')).replace(/\s+/g, '').indexOf(q) < 0) continue;
+    if (gr.downloads) counts.download++;
+    if (gr.faxes.length) counts.fax++;
+    byWs[gr.workspace] = (byWs[gr.workspace] || 0) + 1;
+    list.push(gr);
   }
-  var page = matched.slice(offset, offset + limit);
-  return { rows: page, total: matched.length, counts: counts, byWorkspace: byWs, offset: offset,
-           nextOffset: offset + page.length < matched.length ? offset + page.length : null,
+  list.sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : 0; });   // 최근 발급이 맨 위
+  var page = list.slice(offset, offset + limit);
+  return { rows: page, total: list.length, counts: counts, byWorkspace: byWs, offset: offset,
+           nextOffset: offset + page.length < list.length ? offset + page.length : null,
            accounts: admin ? readUsers_().map(function (u) { return { id: u.id, name: u.name }; }) : null };
 }
 
@@ -495,7 +517,7 @@ function relayPoll_(req) {
       t.sh.getRange(i + 2, F.status + 1).setValue('서버 전달');
     }
   });
-  return { jobs: jobs, sender: prop_('FAX_SENDER') || '0707966579' };
+  return { jobs: jobs, sender: digits_(prop_('FAX_SENDER')) || '07079665797' };
 }
 
 /** 중계 서버가 진행 상황을 알려 줌. state: accepted(서버에 저장·모듈에 넘김) / done(결과 코드) / failed(서버 쪽 오류) */

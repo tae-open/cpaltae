@@ -223,10 +223,13 @@
       faxTo = '<p class="fax-to ok">팩스 받는 곳 <b>' + esc(c.name) + '</b><br>' + esc(c.fax) + '</p>';
     }
     var fax = '';
-    if (tab.fax_label) {
+    if (tab.fax_label) {   // 팩스가 있는 탭: [PDF 다운로드] [팩스 보내기] 한 줄
       var fmiss = res.bundles[tab.fax].missing, why = fmiss.length ? fmiss.join(', ') + '이(가) 없어 보낼 수 없어요.' : !target ? '확인된 팩스번호가 없어 보낼 수 없어요.' : '';
-      fax = '<button type="button" class="btn sm fax-btn" data-fax="' + tab.fax + '"' + (why ? ' disabled' : '') + '>' + esc(tab.fax_label) + '</button>' +
-        (why ? '<p class="miss-note">' + esc(why) + '</p>' : '') + '<div id="faxBox"></div>';
+      var dmiss = res.bundles[tab.fax].missing.length;
+      buttons = '<div class="dl-pair"><button type="button" class="btn sm dl" data-download="' + tab.fax + '"' + (dmiss ? ' disabled' : '') + ' title="' + esc(sp.bundles[tab.fax].label) + '">PDF 다운로드</button>' +
+        '<button type="button" class="btn sm fax-btn" data-fax="' + tab.fax + '"' + (why ? ' disabled' : '') + ' title="' + esc(tab.fax_label) + '">팩스 보내기</button></div>' +
+        (why ? '<p class="miss-note">' + esc(why) + (dmiss ? ' 정보수정에서 올려 주세요.' : '') + '</p>' : '');
+      fax = '<div id="faxBox"></div>';
     }
     $('caseSide').innerHTML =
       (tab.submit ? '<p class="submit-to">제출처 <b>' + esc(tab.submit) + (state.tab === 'nps' && state.nps && state.nps.branch ? ' (' + esc(state.nps.branch) + ')' : '') + '</b></p>' : '') + faxTo +

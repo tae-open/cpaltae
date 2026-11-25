@@ -3,7 +3,7 @@
   var $ = function(id){ return document.getElementById(id); };
   var api = TAEUI.api, esc = TAEUI.esc, when = TAEUI.fmtDateTime;
   var me = null, current = 'home';
-  var NEED_SERVER = '20261126';   // 이 화면이 기대하는 서버(Code.gs) 버전 이상
+  var NEED_SERVER = '20261129';   // 이 화면이 기대하는 서버(Code.gs) 버전 이상
 
   // ===== 화면 주소(#…) — 새로 고침하거나 주소로 바로 들어와도 같은 화면 =====
   var ROUTES = {

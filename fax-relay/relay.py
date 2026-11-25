@@ -156,7 +156,7 @@ def main():
             res = api(conf, {"action": "relay.poll"})
             for job in res.get("jobs", []):
                 try:
-                    accept(conf, state, job, res.get("sender") or "0707966579")
+                    accept(conf, state, job, res.get("sender") or "07079665797")
                 except Exception as e:   # 한 건이 실패해도 다른 건은 계속
                     log.error("작업 %s 처리 실패: %s", job.get("job"), e)
                     try:

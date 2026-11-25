@@ -296,3 +296,17 @@ input.auto{background:var(--ok-bg);border-bottom-color:var(--focus)}
 .fax-mode.test{color:var(--accent)}.fax-mode.warn{color:var(--warn)}.fax-mode.live{color:var(--ok)}
 input[type=search]{width:100%;font:inherit;font-size:14px;color:var(--ink);background:transparent;border:0;border-bottom:1.5px solid var(--line);padding:7px 2px;border-radius:0;-webkit-appearance:none;appearance:none}
 input[type=search]:focus{outline:none;border-bottom-color:var(--focus)}
+/* 2페이지: PDF 다운로드와 팩스 보내기를 한 줄로 */
+.dl-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dl-pair .btn{width:100%;white-space:nowrap}
+/* 발급 기록: 방식 구분 탭 */
+.rec-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0 8px}
+.rec-tabs button{font-size:14px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:6px;padding:7px 16px;cursor:pointer}
+.rec-tabs button b{font-weight:700;margin-left:4px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rec-tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:700}
+.rec-tabs button[aria-selected="true"] b{color:inherit}
+/* 발급 기록: PDF 다운로드 · 팩스 칸 */
+.rec-done{color:var(--ok);font-weight:700;white-space:nowrap}
+.rec-fax{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.rec-fax + .rec-fax{margin-top:4px}
+.rec-fax-to{font-size:13px}
